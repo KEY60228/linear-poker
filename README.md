@@ -113,7 +113,8 @@ migrations/
 - 1 セッション = 1 Linear Project = 1 StoryPoint Issue を運用前提として固定
 - `story-point` ラベルで対象 Issue を識別（ラベル名は `STORY_POINT_LABEL_NAME` で上書き可能）
 - 投票値 `need_info` は「見積もれない、要詳細」を表す特殊選択肢。リマインダー対象から除外
-- 全員投票完了 **かつ `need_info` 投票者ゼロ** で自動開票 → Slack 通知。`need_info` がいる間は「議論待ち」バッジを表示し、手動 reveal で脱出可能
+- 全員投票完了 **かつ `need_info` 投票者ゼロ** で自動開票。`need_info` がいる間は「議論待ち」バッジを表示し、手動 reveal で脱出可能（開票・確定の Slack 通知は無し）
+- Slack 通知は **セッション開始** と **リマインダー** のみ
 - 確定後 Linear に書き戻し
 - 再投票は同 Issue 内で `round_no` をインクリメント
 
