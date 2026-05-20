@@ -1,0 +1,9 @@
+# Copy to .dev.vars for local development with `wrangler dev`.
+# Production secrets must be set via `wrangler secret put <NAME>`.
+
+LINEAR_OAUTH_CLIENT_ID=
+LINEAR_OAUTH_CLIENT_SECRET=
+LINEAR_OAUTH_REDIRECT_URI=http://localhost:8787/auth/linear/callback
+SLACK_WEBHOOK_URL=
+SESSION_SECRET=change-me-to-a-long-random-string
+APP_BASE_URL=http://localhost:8787
