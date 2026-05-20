@@ -43,6 +43,7 @@ wrangler.jsonc      # Cloudflare bindings + cron
 - **Auto-reveal requires zero `need_info` votes.** If anyone voted `need_info`, the session stays in `voting` with a "needs discussion" badge — no new status. Anyone can press a **manual reveal** button to escape, otherwise it waits for the `need_info` voter(s) to change their vote (which re-evaluates the auto-reveal condition).
 - Reminders: JST 15:00 (cron `0 6 * * *` UTC), only for `voting` sessions, skip users who voted `need_info`.
 - **Slack notifications fire only on session start and the daily reminder.** Reveal and finalize stay in-app; do not post to Slack on those events.
+- **No Linear↔Slack user mapping.** Reminders embed Linear `displayName` as plain text — do not @-mention. Setup stays at `SLACK_WEBHOOK_URL` only; do not add Bot Token requirements without an explicit spec change.
 - Anyone can finalize. Finalize writes back to Linear's Estimate field, snapped to the workspace's Estimate scale.
 
 ## Doing work
