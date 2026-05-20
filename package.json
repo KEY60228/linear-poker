@@ -1,0 +1,37 @@
+{
+  "name": "linear-poker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Async planning poker for Linear projects, self-hosted on Cloudflare Workers.",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k -n web,worker -c blue,magenta \"pnpm dev:web\" \"pnpm dev:worker\"",
+    "dev:web": "vite",
+    "dev:worker": "wrangler dev",
+    "build": "pnpm build:web && pnpm build:worker",
+    "build:web": "vite build",
+    "build:worker": "tsc --noEmit -p tsconfig.worker.json",
+    "typecheck": "tsc --noEmit -p tsconfig.worker.json && tsc --noEmit -p tsconfig.web.json",
+    "deploy": "pnpm build:web && wrangler deploy",
+    "db:migrate:local": "wrangler d1 migrations apply linear_poker_db --local",
+    "db:migrate:remote": "wrangler d1 migrations apply linear_poker_db --remote",
+    "cf-typegen": "wrangler types"
+  },
+  "dependencies": {
+    "@linear/sdk": "^39.0.0",
+    "hono": "^4.6.14",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241218.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.0",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.3",
+    "wrangler": "^3.95.0"
+  },
+  "packageManager": "pnpm@9.15.0"
+}
