@@ -10,6 +10,17 @@ import {
 
 type Step = "team" | "project" | "issue" | "participants";
 
+const STEP_ORDER: Step[] = ["team", "project", "issue", "participants"];
+function stepDelta(from: Step, to: Step): number {
+  return STEP_ORDER.indexOf(to) - STEP_ORDER.indexOf(from);
+}
+
+const HISTORY_KEY = "wizardStep";
+
+function pushStep(s: Step) {
+  history.pushState({ [HISTORY_KEY]: s }, "");
+}
+
 export function SessionWizard({ viewer }: { viewer: Viewer | null }) {
   const [step, setStep] = useState<Step>("team");
 
@@ -29,6 +40,40 @@ export function SessionWizard({ viewer }: { viewer: Viewer | null }) {
     api.teams().then(setTeams).catch((e) => setError(String(e)));
   }, []);
 
+  // Seed the current history entry with the wizard's starting step. The
+  // wizard has no persistent data, so each mount starts fresh at "team".
+  useEffect(() => {
+    history.replaceState({ [HISTORY_KEY]: "team" }, "");
+  }, []);
+
+  // Browser back/forward — rewind the wizard to the popped step.
+  useEffect(() => {
+    function onPop(e: PopStateEvent) {
+      const s = (e.state as { [HISTORY_KEY]?: Step } | null)?.[HISTORY_KEY];
+      if (s === "team") {
+        setTeam(null);
+        setProject(null);
+        setProjects(null);
+        setIssue(null);
+        setIssueLoaded(false);
+        setStep("team");
+      } else if (s === "project") {
+        setProject(null);
+        setIssue(null);
+        setIssueLoaded(false);
+        setStep("project");
+      } else if (s === "issue") {
+        setIssue(null);
+        setIssueLoaded(false);
+        setStep("issue");
+      }
+      // "participants" via forward isn't restorable here — the Next button is
+      // the only path forward.
+    }
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
   async function pickTeam(t: Team) {
     setTeam(t);
     setProject(null);
@@ -36,6 +81,7 @@ export function SessionWizard({ viewer }: { viewer: Viewer | null }) {
     setIssue(null);
     setIssueLoaded(false);
     setStep("project");
+    pushStep("project");
     setError(null);
     try {
       setProjects(await api.backlogProjects(t.id));
@@ -49,6 +95,7 @@ export function SessionWizard({ viewer }: { viewer: Viewer | null }) {
     setIssue(null);
     setIssueLoaded(false);
     setStep("issue");
+    pushStep("issue");
     setError(null);
     try {
       const res = await api.storyPointIssue(p.id);
@@ -60,24 +107,21 @@ export function SessionWizard({ viewer }: { viewer: Viewer | null }) {
     }
   }
 
+  function goToParticipants() {
+    setStep("participants");
+    pushStep("participants");
+  }
+
+  // Breadcrumb "back" buttons go through history.back() so they share the
+  // same code path as the browser's back button.
   function goBackToTeam() {
-    setTeam(null);
-    setProject(null);
-    setProjects(null);
-    setIssue(null);
-    setIssueLoaded(false);
-    setStep("team");
+    history.go(stepDelta(step, "team"));
   }
-
   function goBackToProject() {
-    setProject(null);
-    setIssue(null);
-    setIssueLoaded(false);
-    setStep("project");
+    history.go(stepDelta(step, "project"));
   }
-
   function goBackToIssue() {
-    setStep("issue");
+    history.go(stepDelta(step, "issue"));
   }
 
   return (
@@ -106,7 +150,7 @@ export function SessionWizard({ viewer }: { viewer: Viewer | null }) {
           loaded={issueLoaded}
           canProceed={!!issue}
           onRetry={() => project && pickProject(project)}
-          onProceed={() => setStep("participants")}
+          onProceed={goToParticipants}
         />
       )}
       {step === "participants" && team && project && issue && (
@@ -130,11 +174,13 @@ function Breadcrumbs(props: {
   onBackToProject: () => void;
   onBackToIssue: () => void;
 }) {
+  // Participants is the final step — there's no "past" state, only current
+  // (we're on it) or future (we haven't gotten there yet).
   const reached = {
     team: true,
     project: !!props.team,
     issue: !!props.project,
-    participants: !!props.issue,
+    participants: false,
   };
   const cls = (s: Step) => {
     if (props.step === s) return "crumb current";
