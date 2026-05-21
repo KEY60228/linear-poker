@@ -88,31 +88,31 @@ export function SessionList() {
                   <span className="muted">
                     {s.team.key} · {s.project.name} · round #{s.currentRoundNo}
                   </span>
-                </span>
-                <span className="session-row-meta">
-                  {s.status === "voting" && (
-                    <>
-                      <span className="tag tag-ok">
-                        {s.votedCount}/{s.participantCount} voted
-                      </span>
-                      {s.needInfoCount > 0 && (
-                        <span className="tag tag-info">
-                          {s.needInfoCount} need_info
+                  <span className="session-row-meta">
+                    {s.status === "voting" && (
+                      <>
+                        <span className="tag tag-ok">
+                          {s.votedCount}/{s.participantCount} voted
                         </span>
-                      )}
-                    </>
-                  )}
-                  {s.status === "revealed" && (
-                    <span className="tag tag-value">awaiting finalize</span>
-                  )}
-                  {s.status === "finalized" && s.finalEstimate && (
-                    <span className="tag tag-value">= {s.finalEstimate.value}</span>
-                  )}
-                  {(s.isFacilitator || s.isParticipant) && (
-                    <span className="muted">
-                      {s.isFacilitator ? "facilitator" : "participant"}
-                    </span>
-                  )}
+                        {s.needInfoCount > 0 && (
+                          <span className="tag tag-info">
+                            {s.needInfoCount} need_info
+                          </span>
+                        )}
+                      </>
+                    )}
+                    {s.status === "revealed" && (
+                      <span className="tag tag-value">awaiting finalize</span>
+                    )}
+                    {s.status === "finalized" && s.finalEstimate && (
+                      <span className="tag tag-value">= {s.finalEstimate.value}</span>
+                    )}
+                    {(s.isFacilitator || s.isParticipant) && (
+                      <span className="muted">
+                        {s.isFacilitator ? "facilitator" : "participant"}
+                      </span>
+                    )}
+                  </span>
                 </span>
               </a>
             </li>
