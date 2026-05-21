@@ -18,6 +18,8 @@ import {
 import { readAppSession } from "../lib/session";
 import { randomId } from "../lib/crypto";
 import type { CreateSessionInput } from "../do/session";
+import { listSessionItems } from "../lib/db";
+import type { SessionStatus } from "../lib/db";
 
 const api = new Hono<HonoEnv>();
 
@@ -76,6 +78,24 @@ api.get("/projects/:projectId/storypoint-issue", async (c) => {
 });
 
 // ---------- Session lifecycle ----------
+
+api.get("/sessions", async (c) => {
+  const scope = c.req.query("scope") === "all" ? "all" : "mine";
+  const statusParam = c.req.query("status");
+  const allowed: SessionStatus[] = ["voting", "revealed", "finalized"];
+  const status =
+    statusParam && allowed.includes(statusParam as SessionStatus)
+      ? [statusParam as SessionStatus]
+      : undefined;
+
+  const viewer = viewerId(c);
+  const items = await listSessionItems(
+    c.env.DB,
+    { viewerId: scope === "mine" ? viewer : undefined, status },
+    viewer,
+  );
+  return c.json({ sessions: items });
+});
 
 api.post("/sessions", async (c) => {
   const body = await c.req.json<{

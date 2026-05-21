@@ -47,6 +47,25 @@ export type SessionMeta = {
 
 export type SessionStatus = "voting" | "revealed" | "finalized";
 
+export type SessionListItem = {
+  id: string;
+  status: SessionStatus;
+  currentRoundNo: number;
+  createdAt: number;
+  team: { id: string; name: string; key: string };
+  project: { id: string; name: string; url: string };
+  issue: { id: string; identifier: string; title: string; url: string };
+  participantCount: number;
+  votedCount: number;
+  needInfoCount: number;
+  isParticipant: boolean;
+  isFacilitator: boolean;
+  finalEstimate: { value: string; finalizedAt: number } | null;
+};
+
+export type SessionListScope = "mine" | "all";
+export type SessionListStatusFilter = SessionStatus | "all";
+
 export type ParticipantState = {
   userId: string;
   displayName: string;
@@ -119,6 +138,13 @@ export const api = {
     jsonGet<{ users: User[] }>(`/api/users?q=${encodeURIComponent(q)}`).then(
       (r) => r.users,
     ),
+  listSessions: (scope: SessionListScope, status: SessionListStatusFilter) => {
+    const params = new URLSearchParams({ scope });
+    if (status !== "all") params.set("status", status);
+    return jsonGet<{ sessions: SessionListItem[] }>(
+      `/api/sessions?${params.toString()}`,
+    ).then((r) => r.sessions);
+  },
   createSession: (input: {
     teamId: string;
     projectId: string;
