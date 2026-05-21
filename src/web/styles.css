@@ -123,23 +123,56 @@ button:disabled {
   padding: 0.25rem 0.5rem;
   border-radius: 4px;
   background: transparent;
-  color: inherit;
+  color: var(--muted);
+  opacity: 0.6;
+  font-weight: 400;
+}
+
+.crumb.past {
+  color: var(--accent);
+  opacity: 1;
+  font-weight: 400;
+}
+
+.crumb.current {
+  color: var(--accent);
+  opacity: 1;
+  font-weight: 600;
 }
 
 .crumb:not(:disabled):hover {
   background: rgba(94, 106, 210, 0.1);
 }
 
-.crumb.current {
-  font-weight: 600;
-}
-
-.crumb.future {
-  opacity: 0.5;
-}
-
 .crumb-sep {
   color: var(--muted);
+}
+
+.selection-context {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  background: rgba(94, 106, 210, 0.06);
+  border-radius: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  font-size: 0.875rem;
+}
+
+.selection-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+}
+
+.selection-row dt {
+  color: var(--muted);
+  margin: 0;
+}
+
+.selection-row dd {
+  margin: 0;
+  font-weight: 500;
 }
 
 .list {

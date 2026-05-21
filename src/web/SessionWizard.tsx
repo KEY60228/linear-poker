@@ -91,6 +91,7 @@ export function SessionWizard({ viewer }: { viewer: Viewer | null }) {
         onBackToProject={goBackToProject}
         onBackToIssue={goBackToIssue}
       />
+      <SelectionContext team={team} project={project} issue={issue} step={step} />
       {error && <p className="error">Error: {error}</p>}
 
       {step === "team" && <TeamList teams={teams} onPick={pickTeam} />}
@@ -137,7 +138,7 @@ function Breadcrumbs(props: {
   };
   const cls = (s: Step) => {
     if (props.step === s) return "crumb current";
-    return reached[s] ? "crumb" : "crumb future";
+    return reached[s] ? "crumb past" : "crumb future";
   };
   return (
     <nav className="crumbs">
@@ -154,7 +155,7 @@ function Breadcrumbs(props: {
         disabled={!reached.project || props.step === "project"}
         onClick={props.onBackToProject}
       >
-        2. Project {props.team && <em>({props.team.key})</em>}
+        2. Project
       </button>
       <span className="crumb-sep">›</span>
       <button
@@ -162,13 +163,47 @@ function Breadcrumbs(props: {
         disabled={!reached.issue || props.step === "issue"}
         onClick={props.onBackToIssue}
       >
-        3. Issue {props.project && <em>({props.project.name})</em>}
+        3. Issue
       </button>
       <span className="crumb-sep">›</span>
-      <span className={cls("participants")}>
-        4. Participants {props.issue && <em>({props.issue.identifier})</em>}
-      </span>
+      <span className={cls("participants")}>4. Participants</span>
     </nav>
+  );
+}
+
+function SelectionContext({
+  step,
+  team,
+  project,
+  issue,
+}: {
+  step: Step;
+  team: Team | null;
+  project: Project | null;
+  issue: StoryPointIssue | null;
+}) {
+  // Show only the items the user has already locked in (skip the one they're
+  // currently choosing).
+  const parts: { label: string; value: string }[] = [];
+  if (team && step !== "team") {
+    parts.push({ label: "Team", value: `${team.key} · ${team.name}` });
+  }
+  if (project && step !== "project" && step !== "team") {
+    parts.push({ label: "Project", value: project.name });
+  }
+  if (issue && step === "participants") {
+    parts.push({ label: "Issue", value: `${issue.identifier} ${issue.title}` });
+  }
+  if (parts.length === 0) return null;
+  return (
+    <dl className="selection-context">
+      {parts.map((p) => (
+        <div className="selection-row" key={p.label}>
+          <dt>{p.label}</dt>
+          <dd>{p.value}</dd>
+        </div>
+      ))}
+    </dl>
   );
 }
 
