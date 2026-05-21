@@ -91,6 +91,23 @@ export interface ViewerDTO {
   displayName: string;
 }
 
+export interface UserDTO {
+  id: string;
+  name: string;
+  displayName: string;
+  email: string;
+  avatarUrl: string | null;
+}
+
+export type EstimateScaleType = "notUsed" | "exponential" | "fibonacci" | "linear" | "tShirt";
+
+export interface EstimateScaleDTO {
+  type: EstimateScaleType;
+  allowZero: boolean;
+  /** Allowed vote values, stored as strings. Labels are display-only. */
+  options: { value: string; label: string }[];
+}
+
 // ---- API helpers --------------------------------------------------------
 
 export async function getViewer(accessToken: string): Promise<ViewerDTO> {
@@ -126,6 +143,150 @@ export async function listBacklogProjects(
     color: p.color ?? null,
     url: p.url,
   }));
+}
+
+export async function listTeamMembers(
+  accessToken: string,
+  teamId: string,
+): Promise<UserDTO[]> {
+  const team = await clientFor(accessToken).team(teamId);
+  const conn = await team.members({ first: 100 });
+  return conn.nodes.map(toUserDTO);
+}
+
+export async function listUsersByIds(
+  accessToken: string,
+  ids: string[],
+): Promise<UserDTO[]> {
+  if (ids.length === 0) return [];
+  const conn = await clientFor(accessToken).users({
+    first: Math.min(100, ids.length),
+    filter: { id: { in: ids } },
+  });
+  return conn.nodes.map(toUserDTO);
+}
+
+export async function searchUsers(
+  accessToken: string,
+  query: string,
+): Promise<UserDTO[]> {
+  const conn = await clientFor(accessToken).users({
+    first: 25,
+    filter: {
+      or: [
+        { displayName: { containsIgnoreCase: query } },
+        { name: { containsIgnoreCase: query } },
+        { email: { containsIgnoreCase: query } },
+      ],
+    },
+  });
+  return conn.nodes.map(toUserDTO);
+}
+
+function toUserDTO(u: {
+  id: string;
+  name: string;
+  displayName: string;
+  email: string;
+  avatarUrl?: string | null;
+}): UserDTO {
+  return {
+    id: u.id,
+    name: u.name,
+    displayName: u.displayName,
+    email: u.email,
+    avatarUrl: u.avatarUrl ?? null,
+  };
+}
+
+export async function getTeamSummary(
+  accessToken: string,
+  teamId: string,
+): Promise<{ id: string; name: string; key: string; scale: EstimateScaleDTO }> {
+  const team = await clientFor(accessToken).team(teamId);
+  const type = (team.issueEstimationType ?? "notUsed") as EstimateScaleType;
+  const allowZero = team.issueEstimationAllowZero ?? false;
+  const extended = team.issueEstimationExtended ?? false;
+  return {
+    id: team.id,
+    name: team.name,
+    key: team.key,
+    scale: { type, allowZero, options: buildScaleOptions(type, allowZero, extended) },
+  };
+}
+
+export async function getProjectSummary(
+  accessToken: string,
+  projectId: string,
+): Promise<{ id: string; name: string; url: string }> {
+  const p = await clientFor(accessToken).project(projectId);
+  return { id: p.id, name: p.name, url: p.url };
+}
+
+export async function getIssueSummary(
+  accessToken: string,
+  issueId: string,
+): Promise<{
+  id: string;
+  identifier: string;
+  title: string;
+  url: string;
+  estimate: number | null;
+}> {
+  const i = await clientFor(accessToken).issue(issueId);
+  return {
+    id: i.id,
+    identifier: i.identifier,
+    title: i.title,
+    url: i.url,
+    estimate: i.estimate ?? null,
+  };
+}
+
+export async function getTeamEstimateScale(
+  accessToken: string,
+  teamId: string,
+): Promise<EstimateScaleDTO> {
+  const team = await clientFor(accessToken).team(teamId);
+  const type = (team.issueEstimationType ?? "notUsed") as EstimateScaleType;
+  const allowZero = team.issueEstimationAllowZero ?? false;
+  const extended = team.issueEstimationExtended ?? false;
+  return { type, allowZero, options: buildScaleOptions(type, allowZero, extended) };
+}
+
+function buildScaleOptions(
+  type: EstimateScaleType,
+  allowZero: boolean,
+  extended: boolean,
+): { value: string; label: string }[] {
+  if (type === "notUsed") return [];
+  const numeric =
+    type === "exponential"
+      ? extended
+        ? [0, 1, 2, 4, 8, 16, 32, 64]
+        : [0, 1, 2, 4, 8, 16]
+      : type === "fibonacci"
+        ? extended
+          ? [0, 1, 2, 3, 5, 8, 13, 21]
+          : [0, 1, 2, 3, 5, 8]
+        : type === "linear"
+          ? extended
+            ? [0, 1, 2, 3, 4, 5, 6, 7]
+            : [0, 1, 2, 3, 4, 5]
+          : [0, 1, 2, 3, 5]; // tShirt internal numeric values
+  const filtered = allowZero ? numeric : numeric.filter((n) => n !== 0);
+  if (type === "tShirt") {
+    const tShirtLabels: Record<number, string> = {
+      0: "—",
+      1: "XS",
+      2: "S",
+      3: "M",
+      5: "L",
+      8: "XL",
+    };
+    return filtered.map((n) => ({ value: String(n), label: tShirtLabels[n] ?? String(n) }));
+  }
+  return filtered.map((n) => ({ value: String(n), label: String(n) }));
 }
 
 export async function findStoryPointIssue(

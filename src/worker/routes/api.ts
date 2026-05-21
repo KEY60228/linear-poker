@@ -3,11 +3,19 @@ import type { Context } from "hono";
 import type { HonoEnv } from "../env";
 import {
   findStoryPointIssue,
+  getIssueSummary,
+  getProjectSummary,
+  getTeamSummary,
   getViewer,
   listBacklogProjects,
+  listTeamMembers,
   listTeams,
+  listUsersByIds,
+  searchUsers,
 } from "../lib/linear";
 import { readAppSession } from "../lib/session";
+import { randomId } from "../lib/crypto";
+import type { CreateSessionInput } from "../do/session";
 
 const api = new Hono<HonoEnv>();
 
@@ -25,6 +33,19 @@ function token(c: Context<HonoEnv>): string {
   return t;
 }
 
+function viewerId(c: Context<HonoEnv>): string {
+  const s = c.get("session");
+  if (!s) throw new Error("session missing — middleware not applied");
+  return s.linearUserId;
+}
+
+function doStub(c: Context<HonoEnv>, sessionId: string) {
+  const id = c.env.SESSION_DO.idFromName(sessionId);
+  return c.env.SESSION_DO.get(id);
+}
+
+// ---------- Lookup endpoints ----------
+
 api.get("/me", async (c) => c.json(await getViewer(token(c))));
 
 api.get("/teams", async (c) => c.json({ teams: await listTeams(token(c)) }));
@@ -34,6 +55,17 @@ api.get("/teams/:teamId/backlog-projects", async (c) => {
   return c.json({ projects: await listBacklogProjects(token(c), teamId) });
 });
 
+api.get("/teams/:teamId/members", async (c) => {
+  const teamId = c.req.param("teamId");
+  return c.json({ users: await listTeamMembers(token(c), teamId) });
+});
+
+api.get("/users", async (c) => {
+  const q = (c.req.query("q") ?? "").trim();
+  if (q.length < 2) return c.json({ users: [] });
+  return c.json({ users: await searchUsers(token(c), q) });
+});
+
 api.get("/projects/:projectId/storypoint-issue", async (c) => {
   const projectId = c.req.param("projectId");
   const label = c.env.STORY_POINT_LABEL_NAME;
@@ -41,9 +73,126 @@ api.get("/projects/:projectId/storypoint-issue", async (c) => {
   return c.json({ issue, labelName: label });
 });
 
-// Placeholder endpoints — implemented in v0.2 PR②.
-api.post("/sessions", (c) => c.json({ error: "not_implemented" }, 501));
-api.get("/sessions/:id", (c) => c.json({ error: "not_implemented" }, 501));
-api.delete("/sessions/:id", (c) => c.json({ error: "not_implemented" }, 501));
+// ---------- Session lifecycle ----------
+
+api.post("/sessions", async (c) => {
+  const body = await c.req.json<{
+    teamId: string;
+    projectId: string;
+    issueId: string;
+    participantIds: string[];
+  }>();
+  if (!body.teamId || !body.projectId || !body.issueId) {
+    return c.json({ error: "missing_fields" }, 400);
+  }
+  if (!Array.isArray(body.participantIds) || body.participantIds.length === 0) {
+    return c.json({ error: "no_participants" }, 400);
+  }
+
+  const accessToken = token(c);
+  const [team, project, issue, users] = await Promise.all([
+    getTeamSummary(accessToken, body.teamId),
+    getProjectSummary(accessToken, body.projectId),
+    getIssueSummary(accessToken, body.issueId),
+    listUsersByIds(accessToken, body.participantIds),
+  ]);
+
+  if (team.scale.type === "notUsed") {
+    return c.json({ error: "estimate_scale_not_used" }, 400);
+  }
+  if (users.length !== body.participantIds.length) {
+    return c.json({ error: "unknown_participants" }, 400);
+  }
+
+  const sessionId = randomId(16);
+  const input: CreateSessionInput = {
+    sessionId,
+    teamId: body.teamId,
+    projectId: body.projectId,
+    issueId: body.issueId,
+    facilitatorId: viewerId(c),
+    meta: {
+      team: { id: team.id, name: team.name, key: team.key },
+      project: { id: project.id, name: project.name, url: project.url },
+      issue,
+      scale: team.scale,
+      labelName: c.env.STORY_POINT_LABEL_NAME,
+    },
+    participants: users.map((u) => ({
+      userId: u.id,
+      displayName: u.displayName,
+      email: u.email,
+    })),
+  };
+
+  try {
+    await doStub(c, sessionId).createSession(input);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.startsWith("session_already_exists:")) {
+      return c.json({ error: "session_already_exists", existingSessionId: msg.split(":")[1] }, 409);
+    }
+    throw e;
+  }
+  return c.json({ id: sessionId }, 201);
+});
+
+api.get("/sessions/:id", async (c) => {
+  const id = c.req.param("id");
+  try {
+    const state = await doStub(c, id).getState(id);
+    return c.json(state);
+  } catch (e) {
+    if (e instanceof Error && e.message === "session_not_found") {
+      return c.json({ error: "not_found" }, 404);
+    }
+    throw e;
+  }
+});
+
+api.post("/sessions/:id/participants", async (c) => {
+  const id = c.req.param("id");
+  const { userId } = await c.req.json<{ userId: string }>();
+  if (!userId) return c.json({ error: "missing_userId" }, 400);
+  const [user] = await listUsersByIds(token(c), [userId]);
+  if (!user) return c.json({ error: "unknown_user" }, 400);
+  await doStub(c, id).addParticipant(id, {
+    userId: user.id,
+    displayName: user.displayName,
+    email: user.email,
+  });
+  return c.json({ ok: true });
+});
+
+api.delete("/sessions/:id/participants/:userId", async (c) => {
+  const id = c.req.param("id");
+  const userId = c.req.param("userId");
+  await doStub(c, id).removeParticipant(id, userId);
+  return c.json({ ok: true });
+});
+
+api.post("/sessions/:id/votes", async (c) => {
+  const id = c.req.param("id");
+  const { value } = await c.req.json<{ value: string }>();
+  if (typeof value !== "string" || value.length === 0) {
+    return c.json({ error: "missing_value" }, 400);
+  }
+  try {
+    await doStub(c, id).vote(id, viewerId(c), value);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg === "not_a_participant") return c.json({ error: msg }, 403);
+    if (msg === "invalid_vote_value") return c.json({ error: msg }, 400);
+    if (msg === "not_voting") return c.json({ error: msg }, 409);
+    throw e;
+  }
+  return c.json({ ok: true });
+});
+
+api.post("/sessions/:id/reveal", async (c) => {
+  const id = c.req.param("id");
+  await doStub(c, id).revealManually(id);
+  return c.json({ ok: true });
+});
 
 export default api;

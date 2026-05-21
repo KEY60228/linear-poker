@@ -1,8 +1,10 @@
+import type { SessionDO } from "./do/session";
+
 export interface Env {
   DB: D1Database;
   TOKENS: KVNamespace;
   ASSETS: Fetcher;
-  SESSION_DO: DurableObjectNamespace;
+  SESSION_DO: DurableObjectNamespace<SessionDO>;
 
   LINEAR_OAUTH_CLIENT_ID: string;
   LINEAR_OAUTH_CLIENT_SECRET: string;
