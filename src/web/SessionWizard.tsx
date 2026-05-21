@@ -129,10 +129,20 @@ function Breadcrumbs(props: {
   onBackToProject: () => void;
   onBackToIssue: () => void;
 }) {
+  const reached = {
+    team: true,
+    project: !!props.team,
+    issue: !!props.project,
+    participants: !!props.issue,
+  };
+  const cls = (s: Step) => {
+    if (props.step === s) return "crumb current";
+    return reached[s] ? "crumb" : "crumb future";
+  };
   return (
     <nav className="crumbs">
       <button
-        className="crumb"
+        className={cls("team")}
         disabled={props.step === "team"}
         onClick={props.onBackToTeam}
       >
@@ -140,24 +150,22 @@ function Breadcrumbs(props: {
       </button>
       <span className="crumb-sep">›</span>
       <button
-        className="crumb"
-        disabled={!props.team || props.step === "project"}
+        className={cls("project")}
+        disabled={!reached.project || props.step === "project"}
         onClick={props.onBackToProject}
       >
         2. Project {props.team && <em>({props.team.key})</em>}
       </button>
       <span className="crumb-sep">›</span>
       <button
-        className="crumb"
-        disabled={!props.project || props.step === "issue"}
+        className={cls("issue")}
+        disabled={!reached.issue || props.step === "issue"}
         onClick={props.onBackToIssue}
       >
         3. Issue {props.project && <em>({props.project.name})</em>}
       </button>
       <span className="crumb-sep">›</span>
-      <span
-        className={`crumb ${props.step === "participants" ? "current" : "muted"}`}
-      >
+      <span className={cls("participants")}>
         4. Participants {props.issue && <em>({props.issue.identifier})</em>}
       </span>
     </nav>

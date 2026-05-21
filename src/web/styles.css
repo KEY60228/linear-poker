@@ -134,6 +134,10 @@ button:disabled {
   font-weight: 600;
 }
 
+.crumb.future {
+  opacity: 0.5;
+}
+
 .crumb-sep {
   color: var(--muted);
 }
