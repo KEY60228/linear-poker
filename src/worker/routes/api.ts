@@ -12,6 +12,7 @@ import {
   listTeams,
   listUsersByIds,
   searchUsers,
+  setProjectStatusPlanned,
   updateIssueEstimate,
 } from "../lib/linear";
 import { readAppSession } from "../lib/session";
@@ -221,13 +222,26 @@ api.post("/sessions/:id/finalize", async (c) => {
     return c.json({ error: "invalid_finalize_value" }, 400);
   }
 
-  // Linear write first — if it fails we leave the session as "revealed" so the
-  // user can retry. Persist locally only after Linear has accepted the value.
+  // Linear writes first — if any of them fails we leave the session as
+  // "revealed" so the user can retry. Both Linear ops are idempotent, so a
+  // retry after a partial success (estimate written, project status pending)
+  // is safe.
   try {
     await updateIssueEstimate(token(c), state.meta.issue.id, Number(value));
   } catch (e) {
     return c.json(
       { error: "linear_writeback_failed", detail: e instanceof Error ? e.message : String(e) },
+      502,
+    );
+  }
+  try {
+    await setProjectStatusPlanned(token(c), state.meta.project.id);
+  } catch (e) {
+    return c.json(
+      {
+        error: "linear_project_status_update_failed",
+        detail: e instanceof Error ? e.message : String(e),
+      },
       502,
     );
   }

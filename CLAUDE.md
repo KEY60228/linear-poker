@@ -44,7 +44,7 @@ wrangler.jsonc      # Cloudflare bindings + cron
 - Reminders: JST 15:00 (cron `0 6 * * *` UTC), only for `voting` sessions, skip users who voted `need_info`.
 - **Slack notifications fire only on session start and the daily reminder.** Reveal and finalize stay in-app; do not post to Slack on those events.
 - **No Linear↔Slack user mapping.** Reminders embed Linear `displayName` as plain text — do not @-mention. Setup stays at `SLACK_WEBHOOK_URL` only; do not add Bot Token requirements without an explicit spec change.
-- Anyone can finalize. Finalize writes back to Linear's Estimate field, snapped to the workspace's Estimate scale.
+- Anyone can finalize. Finalize writes back to Linear's Estimate field (snapped to the workspace's Estimate scale) AND moves the project's status to `Planned` (looked up by `type === "planned"` from `projectStatuses`). Both writes are idempotent so a retry after a partial failure is safe.
 
 ## Doing work
 
