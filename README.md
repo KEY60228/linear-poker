@@ -123,7 +123,7 @@ migrations/
 ## ロードマップ
 
 - [x] **v0.1** — Workers + Hono 雛形、Wrangler 設定、D1 / DO / KV バインディング、Linear OAuth ログイン、フロント雛形
-- [ ] **v0.2** — Team / Backlog Project 一覧、StoryPoint Issue 検出、セッション作成、投票、自動開票（DO）
-- [ ] **v0.3** — 開票後の参考値表示、確定 → Linear 書き戻し、再投票
+- [x] **v0.2** — Team / Backlog Project 一覧、StoryPoint Issue 検出、セッション作成、投票、自動開票（DO）
+- [x] **v0.3** — 開票後の参考値表示、確定 → Linear 書き戻し、再投票
 - [ ] **v0.4** — Slack 通知、Cron Trigger でリマインダー
-- [ ] **v0.5** — 参加者の途中追加/削除、フォールバック UX、セルフホスト手順整備
+- [ ] **v0.5** — フォールバック UX、セルフホスト手順整備

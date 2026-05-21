@@ -55,5 +55,5 @@ wrangler.jsonc      # Cloudflare bindings + cron
 
 ## What's done vs not
 
-- **v0.1 (this PR)**: Worker + Hono scaffold, OAuth login + signed cookie session, KV-stored tokens, D1 schema, DO skeleton (no logic yet), React SPA skeleton with login/logout.
-- **Not yet**: team/project listing, story-point issue detection, session CRUD, voting, reveal, finalize, revote, Slack, cron reminder. See README roadmap.
+- **Done (v0.1–v0.3)**: OAuth + signed cookie sessions; team/project listing and StoryPoint issue detection; session creation; participant management; voting with auto-reveal + the need_info "needs discussion" pause + manual reveal; revealed-state stats (median / mean / mode / range) with a snap-to-scale finalize suggestion; finalize that writes the agreed estimate back to Linear and persists locally; re-vote that opens a fresh round.
+- **Not yet**: Slack notifications, the daily reminder cron, fallback UX for the StoryPoint label missing case, self-host docs polish. See README roadmap.

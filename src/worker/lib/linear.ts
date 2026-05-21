@@ -243,6 +243,14 @@ export async function getIssueSummary(
   };
 }
 
+export async function updateIssueEstimate(
+  accessToken: string,
+  issueId: string,
+  estimate: number,
+): Promise<void> {
+  await clientFor(accessToken).updateIssue(issueId, { estimate });
+}
+
 export async function getTeamEstimateScale(
   accessToken: string,
   teamId: string,

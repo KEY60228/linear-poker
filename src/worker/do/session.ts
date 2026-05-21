@@ -4,6 +4,7 @@ import type { SessionMeta, SessionStatus } from "../lib/db";
 import {
   findActiveSessionForIssue,
   getCurrentRound,
+  getFinalEstimate,
   getSession,
   listParticipants,
   listVotesForRound,
@@ -27,6 +28,12 @@ export interface CreateSessionInput {
   participants: ParticipantSeed[];
 }
 
+export interface FinalEstimateDTO {
+  value: string;
+  finalizedBy: string;
+  finalizedAt: number;
+}
+
 export interface SessionStateDTO {
   id: string;
   status: SessionStatus;
@@ -35,6 +42,7 @@ export interface SessionStateDTO {
   facilitatorId: string;
   needsDiscussion: boolean;
   participants: ParticipantStateDTO[];
+  finalEstimate: FinalEstimateDTO | null;
 }
 
 export interface ParticipantStateDTO {
@@ -162,6 +170,48 @@ export class SessionDO extends DurableObject<Env> {
     await this.reveal(sessionId, session.current_round_no);
   }
 
+  /**
+   * Persist the agreed-upon estimate. Callers MUST write to Linear before
+   * calling this — the DO does not own the Linear write because it has no
+   * access to the requester's OAuth token.
+   */
+  async finalize(sessionId: string, byUserId: string, value: string): Promise<void> {
+    const session = await this.requireSession(sessionId);
+    if (session.status !== "revealed") throw new Error("not_revealed");
+    const meta = parseMeta(session.meta_json);
+    if (!isFinalizableValue(value, meta)) throw new Error("invalid_finalize_value");
+
+    const now = Date.now();
+    const db = this.env.DB;
+    await db.batch([
+      db
+        .prepare(
+          "INSERT INTO final_estimates (session_id, value, finalized_by, finalized_at) VALUES (?, ?, ?, ?)",
+        )
+        .bind(sessionId, value, byUserId, now),
+      db.prepare("UPDATE sessions SET status = 'finalized' WHERE id = ?").bind(sessionId),
+    ]);
+  }
+
+  async revote(sessionId: string): Promise<void> {
+    const session = await this.requireSession(sessionId);
+    if (session.status === "finalized") throw new Error("finalized");
+
+    const newRoundNo = session.current_round_no + 1;
+    const newRoundId = crypto.randomUUID();
+    const db = this.env.DB;
+    await db.batch([
+      db
+        .prepare("INSERT INTO rounds (id, session_id, round_no) VALUES (?, ?, ?)")
+        .bind(newRoundId, sessionId, newRoundNo),
+      db
+        .prepare(
+          "UPDATE sessions SET status = 'voting', current_round_no = ? WHERE id = ?",
+        )
+        .bind(newRoundNo, sessionId),
+    ]);
+  }
+
   async getState(sessionId: string): Promise<SessionStateDTO> {
     const session = await this.requireSession(sessionId);
     return await this.buildStateDTO(session);
@@ -239,6 +289,18 @@ export class SessionDO extends DurableObject<Env> {
 
     const needsDiscussion = isVoting && participantsDTO.some((p) => p.votedNeedInfo);
 
+    const finalRow =
+      session.status === "finalized"
+        ? await getFinalEstimate(this.env.DB, session.id)
+        : null;
+    const finalEstimate: FinalEstimateDTO | null = finalRow
+      ? {
+          value: finalRow.value,
+          finalizedBy: finalRow.finalized_by,
+          finalizedAt: finalRow.finalized_at,
+        }
+      : null;
+
     return {
       id: session.id,
       status: session.status,
@@ -247,6 +309,7 @@ export class SessionDO extends DurableObject<Env> {
       facilitatorId: session.facilitator_id,
       needsDiscussion,
       participants: participantsDTO,
+      finalEstimate,
     };
   }
 }
@@ -257,5 +320,10 @@ function parseMeta(json: string): SessionMeta {
 
 export function isValidVoteValue(value: string, meta: SessionMeta): boolean {
   if (value === NEED_INFO_VALUE) return true;
+  return meta.scale.options.some((opt) => opt.value === value);
+}
+
+export function isFinalizableValue(value: string, meta: SessionMeta): boolean {
+  // need_info isn't a valid final estimate — only real scale options.
   return meta.scale.options.some((opt) => opt.value === value);
 }
