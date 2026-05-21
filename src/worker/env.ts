@@ -22,5 +22,6 @@ export type HonoEnv = {
   Bindings: Env;
   Variables: {
     session?: AppSessionContext;
+    accessToken?: string;
   };
 };
