@@ -70,8 +70,8 @@ export interface ProjectDTO {
   id: string;
   name: string;
   description: string | null;
-  icon: string | null;
   color: string | null;
+  url: string;
 }
 
 export interface StoryPointIssueDTO {
@@ -123,8 +123,8 @@ export async function listBacklogProjects(
     id: p.id,
     name: p.name,
     description: p.description ?? null,
-    icon: p.icon ?? null,
     color: p.color ?? null,
+    url: p.url,
   }));
 }
 

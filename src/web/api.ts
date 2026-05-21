@@ -3,8 +3,8 @@ export type Project = {
   id: string;
   name: string;
   description: string | null;
-  icon: string | null;
   color: string | null;
+  url: string;
 };
 export type StoryPointIssue = {
   id: string;

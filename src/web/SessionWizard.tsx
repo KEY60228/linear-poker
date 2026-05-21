@@ -51,14 +51,30 @@ export function SessionWizard() {
     }
   }
 
+  function goBackToTeam() {
+    setTeam(null);
+    setProject(null);
+    setProjects(null);
+    setIssue(null);
+    setIssueLoaded(false);
+    setStep("team");
+  }
+
+  function goBackToProject() {
+    setProject(null);
+    setIssue(null);
+    setIssueLoaded(false);
+    setStep("project");
+  }
+
   return (
     <section className="wizard">
       <Breadcrumbs
         step={step}
         team={team}
         project={project}
-        onBackToTeam={() => setStep("team")}
-        onBackToProject={() => setStep("project")}
+        onBackToTeam={goBackToTeam}
+        onBackToProject={goBackToProject}
       />
       {error && <p className="error">Error: {error}</p>}
 
@@ -69,6 +85,7 @@ export function SessionWizard() {
       {step === "issue" && (
         <IssuePreview
           issue={issue}
+          project={project}
           labelName={labelName}
           loaded={issueLoaded}
           onRetry={() => project && pickProject(project)}
@@ -148,7 +165,6 @@ function ProjectList({
       {projects.map((p) => (
         <li key={p.id}>
           <button className="row" onClick={() => onPick(p)}>
-            {p.icon && <span className="icon">{p.icon}</span>}
             <span>{p.name}</span>
             {p.description && <em className="muted">{p.description}</em>}
           </button>
@@ -160,16 +176,27 @@ function ProjectList({
 
 function IssuePreview({
   issue,
+  project,
   labelName,
   loaded,
   onRetry,
 }: {
   issue: StoryPointIssue | null;
+  project: Project | null;
   labelName: string;
   loaded: boolean;
   onRetry: () => void;
 }) {
   if (!loaded) return <p>Detecting StoryPoint issue…</p>;
+
+  const projectLink = project && (
+    <p className="muted">
+      Linear project:{" "}
+      <a href={project.url} target="_blank" rel="noreferrer">
+        {project.name}
+      </a>
+    </p>
+  );
 
   if (!issue) {
     return (
@@ -179,6 +206,7 @@ function IssuePreview({
           This project has no issue labelled <code>{labelName}</code>. Create one
           (or apply the label to an existing issue) and try again.
         </p>
+        {projectLink}
         <button onClick={onRetry}>Retry detection</button>
       </div>
     );
@@ -196,6 +224,7 @@ function IssuePreview({
       <p className="muted">
         Current estimate: {issue.estimate === null ? "—" : String(issue.estimate)}
       </p>
+      {projectLink}
       {issue.duplicateCount > 0 && (
         <p className="warning">
           ⚠ {issue.duplicateCount} other issue(s) in this project also carry the{" "}
