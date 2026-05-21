@@ -328,6 +328,9 @@ button:disabled {
   text-transform: uppercase;
   letter-spacing: 0.04em;
   border: 1px solid currentColor;
+  min-width: 5.5rem;
+  text-align: center;
+  box-sizing: border-box;
 }
 
 .badge-voting {
