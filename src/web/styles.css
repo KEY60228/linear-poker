@@ -605,10 +605,11 @@ button:disabled {
   align-items: center;
   gap: 0.75rem;
   padding: 0.75rem 1rem;
+  flex-wrap: wrap;
 }
 
 .session-row-main {
-  flex: 1;
+  flex: 1 1 240px;
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
@@ -621,10 +622,17 @@ button:disabled {
   white-space: nowrap;
 }
 
+.session-row-main .muted {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .session-row-meta {
   display: flex;
   gap: 0.4rem;
   align-items: center;
   flex-wrap: wrap;
   justify-content: flex-end;
+  max-width: 100%;
 }
