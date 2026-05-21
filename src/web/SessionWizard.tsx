@@ -1,9 +1,16 @@
-import { useEffect, useState } from "react";
-import { api, type Project, type StoryPointIssue, type Team } from "./api";
+import { useEffect, useMemo, useState } from "react";
+import {
+  api,
+  type Project,
+  type StoryPointIssue,
+  type Team,
+  type User,
+  type Viewer,
+} from "./api";
 
-type Step = "team" | "project" | "issue";
+type Step = "team" | "project" | "issue" | "participants";
 
-export function SessionWizard() {
+export function SessionWizard({ viewer }: { viewer: Viewer | null }) {
   const [step, setStep] = useState<Step>("team");
 
   const [teams, setTeams] = useState<Team[] | null>(null);
@@ -29,6 +36,7 @@ export function SessionWizard() {
     setIssue(null);
     setIssueLoaded(false);
     setStep("project");
+    setError(null);
     try {
       setProjects(await api.backlogProjects(t.id));
     } catch (e) {
@@ -41,6 +49,7 @@ export function SessionWizard() {
     setIssue(null);
     setIssueLoaded(false);
     setStep("issue");
+    setError(null);
     try {
       const res = await api.storyPointIssue(p.id);
       setIssue(res.issue);
@@ -67,14 +76,20 @@ export function SessionWizard() {
     setStep("project");
   }
 
+  function goBackToIssue() {
+    setStep("issue");
+  }
+
   return (
     <section className="wizard">
       <Breadcrumbs
         step={step}
         team={team}
         project={project}
+        issue={issue}
         onBackToTeam={goBackToTeam}
         onBackToProject={goBackToProject}
+        onBackToIssue={goBackToIssue}
       />
       {error && <p className="error">Error: {error}</p>}
 
@@ -88,7 +103,17 @@ export function SessionWizard() {
           project={project}
           labelName={labelName}
           loaded={issueLoaded}
+          canProceed={!!issue}
           onRetry={() => project && pickProject(project)}
+          onProceed={() => setStep("participants")}
+        />
+      )}
+      {step === "participants" && team && project && issue && (
+        <ParticipantsStep
+          team={team}
+          project={project}
+          issue={issue}
+          viewer={viewer}
         />
       )}
     </section>
@@ -99,8 +124,10 @@ function Breadcrumbs(props: {
   step: Step;
   team: Team | null;
   project: Project | null;
+  issue: StoryPointIssue | null;
   onBackToTeam: () => void;
   onBackToProject: () => void;
+  onBackToIssue: () => void;
 }) {
   return (
     <nav className="crumbs">
@@ -120,8 +147,18 @@ function Breadcrumbs(props: {
         2. Project {props.team && <em>({props.team.key})</em>}
       </button>
       <span className="crumb-sep">›</span>
-      <span className={`crumb ${props.step === "issue" ? "current" : "muted"}`}>
+      <button
+        className="crumb"
+        disabled={!props.project || props.step === "issue"}
+        onClick={props.onBackToIssue}
+      >
         3. Issue {props.project && <em>({props.project.name})</em>}
+      </button>
+      <span className="crumb-sep">›</span>
+      <span
+        className={`crumb ${props.step === "participants" ? "current" : "muted"}`}
+      >
+        4. Participants {props.issue && <em>({props.issue.identifier})</em>}
       </span>
     </nav>
   );
@@ -179,13 +216,17 @@ function IssuePreview({
   project,
   labelName,
   loaded,
+  canProceed,
   onRetry,
+  onProceed,
 }: {
   issue: StoryPointIssue | null;
   project: Project | null;
   labelName: string;
   loaded: boolean;
+  canProceed: boolean;
   onRetry: () => void;
+  onProceed: () => void;
 }) {
   if (!loaded) return <p>Detecting StoryPoint issue…</p>;
 
@@ -232,9 +273,169 @@ function IssuePreview({
           consider de-duplicating before creating a session.
         </p>
       )}
+      <p className="actions">
+        <button className="primary-button" disabled={!canProceed} onClick={onProceed}>
+          Next: pick participants →
+        </button>
+      </p>
+    </div>
+  );
+}
+
+function ParticipantsStep({
+  team,
+  project,
+  issue,
+  viewer,
+}: {
+  team: Team;
+  project: Project;
+  issue: StoryPointIssue;
+  viewer: Viewer | null;
+}) {
+  const [members, setMembers] = useState<User[] | null>(null);
+  const [searchResults, setSearchResults] = useState<User[] | null>(null);
+  const [query, setQuery] = useState("");
+  const [selected, setSelected] = useState<Map<string, User>>(new Map());
+  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    api
+      .teamMembers(team.id)
+      .then((users) => {
+        setMembers(users);
+        // Pre-select the viewer (they're creating the session).
+        if (viewer) {
+          const me = users.find((u) => u.id === viewer.id);
+          if (me) {
+            setSelected((prev) => {
+              const next = new Map(prev);
+              next.set(me.id, me);
+              return next;
+            });
+          }
+        }
+      })
+      .catch((e) => setError(String(e)));
+  }, [team.id, viewer?.id]);
+
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 2) {
+      setSearchResults(null);
+      return;
+    }
+    let cancelled = false;
+    const t = setTimeout(() => {
+      api
+        .searchUsers(q)
+        .then((users) => {
+          if (!cancelled) setSearchResults(users);
+        })
+        .catch((e) => !cancelled && setError(String(e)));
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [query]);
+
+  const candidates = useMemo<User[]>(() => {
+    const base = members ?? [];
+    if (searchResults === null) return base;
+    const seen = new Set(base.map((u) => u.id));
+    return [...base, ...searchResults.filter((u) => !seen.has(u.id))];
+  }, [members, searchResults]);
+
+  function toggle(u: User) {
+    setSelected((prev) => {
+      const next = new Map(prev);
+      if (next.has(u.id)) next.delete(u.id);
+      else next.set(u.id, u);
+      return next;
+    });
+  }
+
+  async function createSession() {
+    if (selected.size === 0) return;
+    setCreating(true);
+    setError(null);
+    try {
+      const { id } = await api.createSession({
+        teamId: team.id,
+        projectId: project.id,
+        issueId: issue.id,
+        participantIds: Array.from(selected.keys()),
+      });
+      window.location.hash = `#/sessions/${id}`;
+    } catch (e) {
+      setError(String(e));
+      setCreating(false);
+    }
+  }
+
+  return (
+    <div className="participants">
+      <h3>Pick participants</h3>
       <p className="muted">
-        Session creation arrives in v0.2 PR②. For now this confirms the issue
-        detection works end-to-end.
+        Team members are listed by default. Search to add anyone else from your
+        workspace.
+      </p>
+      <input
+        className="search"
+        type="search"
+        placeholder="Search workspace users (name / email)…"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+      />
+      {error && <p className="error">Error: {error}</p>}
+
+      {selected.size > 0 && (
+        <div className="chips">
+          {Array.from(selected.values()).map((u) => (
+            <span key={u.id} className="chip">
+              {u.displayName}
+              <button
+                aria-label={`Remove ${u.displayName}`}
+                onClick={() => toggle(u)}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
+      {members === null && <p>Loading team members…</p>}
+      {members !== null && (
+        <ul className="list">
+          {candidates.map((u) => {
+            const picked = selected.has(u.id);
+            return (
+              <li key={u.id}>
+                <button
+                  className={`row ${picked ? "row-selected" : ""}`}
+                  onClick={() => toggle(u)}
+                >
+                  <span>{picked ? "✓" : ""}</span>
+                  <span>{u.displayName}</span>
+                  <em className="muted">{u.email}</em>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      <p className="actions">
+        <button
+          className="primary-button"
+          disabled={selected.size === 0 || creating}
+          onClick={createSession}
+        >
+          {creating ? "Creating session…" : `Create session (${selected.size} participants)`}
+        </button>
       </p>
     </div>
   );
