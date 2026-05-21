@@ -115,7 +115,7 @@ migrations/
 - 投票値 `need_info` は「見積もれない、要詳細」を表す特殊選択肢。リマインダー対象から除外
 - 全員投票完了 **かつ `need_info` 投票者ゼロ** で自動開票。`need_info` がいる間は「議論待ち」バッジを表示し、手動 reveal で脱出可能（開票・確定の Slack 通知は無し）
 - Slack 通知は **セッション開始** と **リマインダー** のみ
-- 確定後 Linear に書き戻し
+- 確定後 Linear に書き戻し（Issue Estimate + Project status を `Planned` に更新）
 - 再投票は同 Issue 内で `round_no` をインクリメント
 
 詳細は [docs/handoff.md](./docs/handoff.md) を参照。
@@ -123,7 +123,7 @@ migrations/
 ## ロードマップ
 
 - [x] **v0.1** — Workers + Hono 雛形、Wrangler 設定、D1 / DO / KV バインディング、Linear OAuth ログイン、フロント雛形
-- [ ] **v0.2** — Team / Backlog Project 一覧、StoryPoint Issue 検出、セッション作成、投票、自動開票（DO）
-- [ ] **v0.3** — 開票後の参考値表示、確定 → Linear 書き戻し、再投票
+- [x] **v0.2** — Team / Backlog Project 一覧、StoryPoint Issue 検出、セッション作成、投票、自動開票（DO）
+- [x] **v0.3** — 開票後の参考値表示、確定 → Linear 書き戻し、再投票
 - [ ] **v0.4** — Slack 通知、Cron Trigger でリマインダー
-- [ ] **v0.5** — 参加者の途中追加/削除、フォールバック UX、セルフホスト手順整備
+- [ ] **v0.5** — フォールバック UX、セルフホスト手順整備

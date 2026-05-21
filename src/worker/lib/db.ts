@@ -101,3 +101,20 @@ export async function listVotesForRound(
     .all<VoteRow>();
   return res.results ?? [];
 }
+
+export interface FinalEstimateRow {
+  session_id: string;
+  value: string;
+  finalized_by: string;
+  finalized_at: number;
+}
+
+export async function getFinalEstimate(
+  db: D1Database,
+  sessionId: string,
+): Promise<FinalEstimateRow | null> {
+  return await db
+    .prepare("SELECT * FROM final_estimates WHERE session_id = ?")
+    .bind(sessionId)
+    .first<FinalEstimateRow>();
+}

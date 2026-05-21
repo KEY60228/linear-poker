@@ -445,3 +445,95 @@ button:disabled {
 .row-static button {
   margin-left: auto;
 }
+
+/* --- Revealed / Finalize --- */
+
+.stats {
+  margin: 0.5rem 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.5rem;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.stat dt {
+  font-size: 0.75rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 0;
+}
+
+.stat dd {
+  font-size: 1.125rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.finalize {
+  margin-top: 1rem;
+}
+
+.finalize h4 {
+  margin: 0 0 0.25rem;
+}
+
+.vote-button {
+  position: relative;
+}
+
+.vote-selected {
+  background: rgba(94, 106, 210, 0.18);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.badge-suggested {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  background: var(--accent);
+  color: white;
+  font-size: 0.625rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 1rem;
+}
+
+.secondary-button {
+  background: transparent;
+  color: inherit;
+}
+
+.callout.finalized {
+  border-color: #1c8c5e;
+  background: rgba(28, 140, 94, 0.06);
+}
+
+.final-value {
+  text-align: center;
+  margin: 0.5rem 0;
+}
+
+.final-value-num {
+  display: inline-block;
+  padding: 0.5rem 1.5rem;
+  border-radius: 12px;
+  background: #1c8c5e;
+  color: white;
+  font-size: 1.75rem;
+  font-weight: 700;
+}

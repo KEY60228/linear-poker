@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   api,
   NEED_INFO,
   type ParticipantState,
+  type ScaleOption,
   type SessionState,
   type User,
   type Viewer,
@@ -72,11 +73,36 @@ export function SessionView({
     }
   }
 
+  async function refresh() {
+    try {
+      setState(await api.getSession(sessionId));
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
   async function reveal() {
     try {
       await api.reveal(sessionId);
-      const fresh = await api.getSession(sessionId);
-      setState(fresh);
+      await refresh();
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
+  async function finalize(value: string) {
+    try {
+      await api.finalize(sessionId, value);
+      await refresh();
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
+  async function revote() {
+    try {
+      await api.revote(sessionId);
+      await refresh();
     } catch (e) {
       setError(String(e));
     }
@@ -118,7 +144,10 @@ export function SessionView({
           <button onClick={reveal}>Reveal now</button>
         </div>
       )}
-      {state.status === "revealed" && <RevealedView state={state} />}
+      {state.status === "revealed" && (
+        <RevealedView state={state} onFinalize={finalize} onRevote={revote} />
+      )}
+      {state.status === "finalized" && <FinalizedView state={state} />}
     </section>
   );
 }
@@ -225,31 +254,209 @@ function VotePad({
   );
 }
 
-function RevealedView({ state }: { state: SessionState }) {
-  const numeric = state.participants
+type Stats = {
+  count: number;
+  needInfo: number;
+  median: number | null;
+  mode: number[] | null;
+  mean: number | null;
+  min: number | null;
+  max: number | null;
+};
+
+function computeStats(participants: ParticipantState[]): Stats {
+  const numeric = participants
     .map((p) => p.value)
     .filter((v): v is string => v !== null && v !== NEED_INFO)
     .map((v) => Number(v))
     .filter((n) => !Number.isNaN(n));
+  const needInfo = participants.filter((p) => p.value === NEED_INFO).length;
+  if (numeric.length === 0) {
+    return { count: 0, needInfo, median: null, mode: null, mean: null, min: null, max: null };
+  }
+  const sorted = [...numeric].sort((a, b) => a - b);
+  const mid = sorted.length >> 1;
+  const median =
+    sorted.length % 2 === 0
+      ? ((sorted[mid - 1] ?? 0) + (sorted[mid] ?? 0)) / 2
+      : sorted[mid] ?? 0;
+  const counts = new Map<number, number>();
+  for (const n of numeric) counts.set(n, (counts.get(n) ?? 0) + 1);
+  const maxCount = Math.max(...counts.values());
+  const mode =
+    maxCount === 1
+      ? null
+      : [...counts.entries()]
+          .filter(([, c]) => c === maxCount)
+          .map(([n]) => n)
+          .sort((a, b) => a - b);
+  const mean = numeric.reduce((s, n) => s + n, 0) / numeric.length;
+  return {
+    count: numeric.length,
+    needInfo,
+    median,
+    mode,
+    mean,
+    min: sorted[0] ?? null,
+    max: sorted[sorted.length - 1] ?? null,
+  };
+}
 
-  const needInfoCount = state.participants.filter(
-    (p) => p.value === NEED_INFO,
-  ).length;
+function snapToScale(target: number, options: ScaleOption[]): string | null {
+  if (options.length === 0) return null;
+  let best = options[0]!;
+  let bestDist = Math.abs(Number(best.value) - target);
+  for (const opt of options.slice(1)) {
+    const d = Math.abs(Number(opt.value) - target);
+    if (d < bestDist) {
+      bestDist = d;
+      best = opt;
+    }
+  }
+  return best.value;
+}
+
+function fmt(n: number): string {
+  return Number.isInteger(n) ? String(n) : n.toFixed(2);
+}
+
+function RevealedView({
+  state,
+  onFinalize,
+  onRevote,
+}: {
+  state: SessionState;
+  onFinalize: (value: string) => Promise<void>;
+  onRevote: () => Promise<void>;
+}) {
+  const stats = useMemo(() => computeStats(state.participants), [state.participants]);
+  const suggested = stats.median !== null
+    ? snapToScale(stats.median, state.meta.scale.options)
+    : null;
+  const [selected, setSelected] = useState<string | null>(suggested);
+  const [busy, setBusy] = useState(false);
+
+  // Re-sync the default when the underlying suggestion changes (e.g. after a
+  // participant edit between rounds).
+  useEffect(() => {
+    if (selected === null && suggested !== null) setSelected(suggested);
+  }, [suggested, selected]);
+
+  const hasNeedInfo = stats.needInfo > 0;
+
+  async function confirmFinalize() {
+    if (!selected) return;
+    setBusy(true);
+    try {
+      await onFinalize(selected);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function clickRevote() {
+    setBusy(true);
+    try {
+      await onRevote();
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
-    <div className="callout">
+    <div className="callout revealed">
       <h3>Revealed</h3>
-      {numeric.length > 0 && (
-        <p className="muted">
-          {numeric.length} numeric vote(s) · min {Math.min(...numeric)} · max{" "}
-          {Math.max(...numeric)}
+      {stats.count > 0 ? (
+        <dl className="stats">
+          <Stat label="median" value={fmt(stats.median!)} />
+          <Stat label="mean" value={fmt(stats.mean!)} />
+          <Stat
+            label="mode"
+            value={stats.mode ? stats.mode.map(fmt).join(", ") : "—"}
+          />
+          <Stat label="range" value={`${fmt(stats.min!)} – ${fmt(stats.max!)}`} />
+          <Stat label="votes" value={String(stats.count)} />
+        </dl>
+      ) : (
+        <p className="muted">No numeric votes in this round.</p>
+      )}
+      {hasNeedInfo && (
+        <p className="warning">
+          ⚠ {stats.needInfo} participant(s) voted <code>need_info</code>. You can
+          still finalize, but consider discussing first.
         </p>
       )}
-      {needInfoCount > 0 && (
-        <p className="muted">{needInfoCount} need_info vote(s)</p>
-      )}
+
+      <div className="finalize">
+        <h4>Confirm estimate</h4>
+        <p className="muted">
+          Pick the agreed value. The number on the right is the snap-to-scale
+          suggestion from the median.
+        </p>
+        <div className="vote-buttons">
+          {state.meta.scale.options.map((opt) => {
+            const isSelected = selected === opt.value;
+            const isSuggested = suggested === opt.value;
+            return (
+              <button
+                key={opt.value}
+                className={`vote-button ${isSelected ? "vote-selected" : ""}`}
+                onClick={() => setSelected(opt.value)}
+                disabled={busy}
+              >
+                {opt.label}
+                {isSuggested && <span className="badge-suggested">suggested</span>}
+              </button>
+            );
+          })}
+        </div>
+        <p className="actions">
+          <button
+            className="primary-button"
+            disabled={!selected || busy}
+            onClick={confirmFinalize}
+          >
+            {busy ? "Working…" : `Confirm & write back to Linear`}
+          </button>
+          <button className="secondary-button" disabled={busy} onClick={clickRevote}>
+            Re-vote
+          </button>
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="stat">
+      <dt>{label}</dt>
+      <dd>{value}</dd>
+    </div>
+  );
+}
+
+function FinalizedView({ state }: { state: SessionState }) {
+  const fin = state.finalEstimate;
+  if (!fin) return null;
+  const finalizedBy =
+    state.participants.find((p) => p.userId === fin.finalizedBy)?.displayName ??
+    fin.finalizedBy;
+  const valueLabel =
+    state.meta.scale.options.find((o) => o.value === fin.value)?.label ?? fin.value;
+  return (
+    <div className="callout finalized">
+      <h3>Finalized</h3>
+      <p className="final-value">
+        <span className="final-value-num">{valueLabel}</span>
+      </p>
       <p className="muted">
-        Stats (median / mode / mean), finalize → Linear, and re-vote arrive in v0.3.
+        Written back to Linear ·{" "}
+        <a href={state.meta.issue.url} target="_blank" rel="noreferrer">
+          {state.meta.issue.identifier}
+        </a>{" "}
+        · finalized by {finalizedBy} ·{" "}
+        {new Date(fin.finalizedAt).toLocaleString()}
       </p>
     </div>
   );

@@ -243,6 +243,27 @@ export async function getIssueSummary(
   };
 }
 
+export async function updateIssueEstimate(
+  accessToken: string,
+  issueId: string,
+  estimate: number,
+): Promise<void> {
+  await clientFor(accessToken).updateIssue(issueId, { estimate });
+}
+
+export async function setProjectStatusPlanned(
+  accessToken: string,
+  projectId: string,
+): Promise<void> {
+  const client = clientFor(accessToken);
+  const statuses = await client.projectStatuses({ first: 100 });
+  const planned = statuses.nodes.find((s) => s.type === "planned");
+  if (!planned) {
+    throw new Error("no_planned_status_in_workspace");
+  }
+  await client.updateProject(projectId, { statusId: planned.id });
+}
+
 export async function getTeamEstimateScale(
   accessToken: string,
   teamId: string,

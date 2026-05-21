@@ -12,6 +12,8 @@ import {
   listTeams,
   listUsersByIds,
   searchUsers,
+  setProjectStatusPlanned,
+  updateIssueEstimate,
 } from "../lib/linear";
 import { readAppSession } from "../lib/session";
 import { randomId } from "../lib/crypto";
@@ -192,6 +194,78 @@ api.post("/sessions/:id/votes", async (c) => {
 api.post("/sessions/:id/reveal", async (c) => {
   const id = c.req.param("id");
   await doStub(c, id).revealManually(id);
+  return c.json({ ok: true });
+});
+
+api.post("/sessions/:id/finalize", async (c) => {
+  const id = c.req.param("id");
+  const { value } = await c.req.json<{ value: string }>();
+  if (typeof value !== "string" || value.length === 0) {
+    return c.json({ error: "missing_value" }, 400);
+  }
+
+  // Read current state to validate the value against the cached scale and
+  // to grab the Linear issue id without an extra Linear call.
+  let state;
+  try {
+    state = await doStub(c, id).getState(id);
+  } catch (e) {
+    if (e instanceof Error && e.message === "session_not_found") {
+      return c.json({ error: "not_found" }, 404);
+    }
+    throw e;
+  }
+  if (state.status !== "revealed") {
+    return c.json({ error: "not_revealed" }, 409);
+  }
+  if (!state.meta.scale.options.some((o) => o.value === value)) {
+    return c.json({ error: "invalid_finalize_value" }, 400);
+  }
+
+  // Linear writes first — if any of them fails we leave the session as
+  // "revealed" so the user can retry. Both Linear ops are idempotent, so a
+  // retry after a partial success (estimate written, project status pending)
+  // is safe.
+  try {
+    await updateIssueEstimate(token(c), state.meta.issue.id, Number(value));
+  } catch (e) {
+    return c.json(
+      { error: "linear_writeback_failed", detail: e instanceof Error ? e.message : String(e) },
+      502,
+    );
+  }
+  try {
+    await setProjectStatusPlanned(token(c), state.meta.project.id);
+  } catch (e) {
+    return c.json(
+      {
+        error: "linear_project_status_update_failed",
+        detail: e instanceof Error ? e.message : String(e),
+      },
+      502,
+    );
+  }
+  try {
+    await doStub(c, id).finalize(id, viewerId(c), value);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg === "not_revealed") return c.json({ error: msg }, 409);
+    if (msg === "invalid_finalize_value") return c.json({ error: msg }, 400);
+    throw e;
+  }
+  return c.json({ ok: true });
+});
+
+api.post("/sessions/:id/revote", async (c) => {
+  const id = c.req.param("id");
+  try {
+    await doStub(c, id).revote(id);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg === "finalized") return c.json({ error: msg }, 409);
+    if (msg === "session_not_found") return c.json({ error: "not_found" }, 404);
+    throw e;
+  }
   return c.json({ ok: true });
 });
 

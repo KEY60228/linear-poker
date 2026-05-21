@@ -56,6 +56,12 @@ export type ParticipantState = {
   value: string | null;
 };
 
+export type FinalEstimate = {
+  value: string;
+  finalizedBy: string;
+  finalizedAt: number;
+};
+
 export type SessionState = {
   id: string;
   status: SessionStatus;
@@ -64,6 +70,7 @@ export type SessionState = {
   facilitatorId: string;
   needsDiscussion: boolean;
   participants: ParticipantState[];
+  finalEstimate: FinalEstimate | null;
 };
 
 async function jsonGet<T>(path: string): Promise<T> {
@@ -137,6 +144,16 @@ export const api = {
   reveal: (sessionId: string) =>
     jsonPost<{ ok: true }>(
       `/api/sessions/${encodeURIComponent(sessionId)}/reveal`,
+      {},
+    ),
+  finalize: (sessionId: string, value: string) =>
+    jsonPost<{ ok: true }>(
+      `/api/sessions/${encodeURIComponent(sessionId)}/finalize`,
+      { value },
+    ),
+  revote: (sessionId: string) =>
+    jsonPost<{ ok: true }>(
+      `/api/sessions/${encodeURIComponent(sessionId)}/revote`,
       {},
     ),
   logout: () =>
