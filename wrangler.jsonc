@@ -30,14 +30,14 @@
     {
       "binding": "DB",
       "database_name": "linear_poker_db",
-      "database_id": "REPLACE_ME_WITH_D1_DATABASE_ID",
+      "database_id": "98450df4-8275-43fa-8935-14c975f944ac",
       "migrations_dir": "migrations"
     }
   ],
   "kv_namespaces": [
     {
       "binding": "TOKENS",
-      "id": "REPLACE_ME_WITH_KV_NAMESPACE_ID"
+      "id": "bfcadc8a5ac24a94954b10380b003683"
     }
   ],
   "triggers": {
