@@ -111,7 +111,7 @@ export function SessionView({
   async function unfinalize() {
     if (
       !window.confirm(
-        "Revert this finalization?\n\nThis only clears the local record — it does NOT undo the Linear writeback. Use this when Linear's estimate or project status has already been reverted externally and you want the app to reflect that.",
+        "確定を取り消しますか？\n\nこの操作はアプリ内の記録だけを取り消します。Linear 側に書き戻した Estimate と Project status は元に戻りません。Linear 側で既に値が revert されているケースで、アプリ側の状態を追従させたい時に使ってください。",
       )
     ) {
       return;
