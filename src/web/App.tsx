@@ -2,18 +2,27 @@ import { useEffect, useState } from "react";
 import { api, type AuthStatus, type Viewer } from "./api";
 import { SessionWizard } from "./SessionWizard";
 import { SessionView } from "./SessionView";
+import { SessionList } from "./SessionList";
 
-function readSessionIdFromHash(): string | null {
+type Route =
+  | { kind: "list" }
+  | { kind: "new" }
+  | { kind: "session"; id: string };
+
+function readRoute(): Route {
   const hash = window.location.hash;
+  if (hash === "" || hash === "#" || hash === "#/") return { kind: "list" };
+  if (hash === "#/new") return { kind: "new" };
   const m = hash.match(/^#\/sessions\/([A-Za-z0-9_-]+)$/);
-  return m ? (m[1] ?? null) : null;
+  if (m && m[1]) return { kind: "session", id: m[1] };
+  return { kind: "list" };
 }
 
 export function App() {
   const [status, setStatus] = useState<AuthStatus | null>(null);
   const [viewer, setViewer] = useState<Viewer | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [sessionId, setSessionId] = useState<string | null>(readSessionIdFromHash());
+  const [route, setRoute] = useState<Route>(readRoute());
 
   useEffect(() => {
     api.authStatus().then(setStatus).catch((e) => setError(String(e)));
@@ -26,7 +35,7 @@ export function App() {
 
   useEffect(() => {
     function onHash() {
-      setSessionId(readSessionIdFromHash());
+      setRoute(readRoute());
     }
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
@@ -74,10 +83,13 @@ export function App() {
         </div>
       )}
 
-      {status?.authenticated && sessionId && (
-        <SessionView sessionId={sessionId} viewer={viewer} />
+      {status?.authenticated && route.kind === "list" && <SessionList />}
+      {status?.authenticated && route.kind === "new" && (
+        <SessionWizard viewer={viewer} />
       )}
-      {status?.authenticated && !sessionId && <SessionWizard viewer={viewer} />}
+      {status?.authenticated && route.kind === "session" && (
+        <SessionView sessionId={route.id} viewer={viewer} />
+      )}
     </main>
   );
 }
