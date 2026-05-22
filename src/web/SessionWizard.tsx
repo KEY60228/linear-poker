@@ -18,9 +18,44 @@ function stepDelta(from: Step, to: Step): number {
 }
 
 const HISTORY_KEY = "wizardStep";
+const STORAGE_KEY = "linear-poker:wizard-state";
 
 function pushStep(s: Step) {
   history.pushState({ [HISTORY_KEY]: s }, "");
+}
+
+type PersistedState = {
+  team: Team | null;
+  project: Project | null;
+  issue: StoryPointIssue | null;
+  labelName: string;
+  issueLoaded: boolean;
+};
+
+function persist(state: PersistedState) {
+  try {
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch {
+    // ignore quota / privacy-mode errors
+  }
+}
+
+function readPersisted(): PersistedState | null {
+  try {
+    const raw = sessionStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as PersistedState;
+  } catch {
+    return null;
+  }
+}
+
+function clearPersisted() {
+  try {
+    sessionStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // ignore
+  }
 }
 
 export function SessionWizard({ viewer }: { viewer: Viewer | null }) {
@@ -42,11 +77,44 @@ export function SessionWizard({ viewer }: { viewer: Viewer | null }) {
     api.teams().then(setTeams).catch((e) => setError(String(e)));
   }, []);
 
-  // Seed the current history entry with the wizard's starting step. The
-  // wizard has no persistent data, so each mount starts fresh at "team".
+  // Seed the current history entry. On a normal mount we start at "team",
+  // but if the user just navigated back from a session view, the previous
+  // history entry's wizardStep tells us where to land. In that case we
+  // restore team/project/issue from sessionStorage so the user can pick
+  // participants again without re-walking the whole wizard.
   useEffect(() => {
+    const s = (history.state as { [HISTORY_KEY]?: Step } | null)?.[HISTORY_KEY];
+    if (s && s !== "team") {
+      const persisted = readPersisted();
+      if (persisted) {
+        if (persisted.team) setTeam(persisted.team);
+        if (persisted.project) setProject(persisted.project);
+        if (persisted.issue) setIssue(persisted.issue);
+        if (persisted.labelName) setLabelName(persisted.labelName);
+        setIssueLoaded(persisted.issueLoaded);
+        setStep(s);
+        // Re-fetch projects if we landed on a step that lists them.
+        if ((s === "project" || s === "issue" || s === "participants") && persisted.team) {
+          api.backlogProjects(persisted.team.id).then(setProjects).catch(() => undefined);
+        }
+        return;
+      }
+    }
     history.replaceState({ [HISTORY_KEY]: "team" }, "");
   }, []);
+
+  // Mirror the wizard's data into sessionStorage so a remount (e.g. after
+  // browser-back from a created session) can land on the right step. We only
+  // write once the user has actually picked something, so the initial null
+  // state doesn't clobber a prior persisted snapshot during the restore
+  // render cycle.
+  useEffect(() => {
+    if (team || project || issue) {
+      persist({ team, project, issue, labelName, issueLoaded });
+    } else if (step === "team") {
+      clearPersisted();
+    }
+  }, [step, team, project, issue, labelName, issueLoaded]);
 
   // Browser back/forward — rewind the wizard to the popped step.
   useEffect(() => {
@@ -485,17 +553,6 @@ function ParticipantsStep({
         value={query}
         onChange={(e) => setQuery(e.target.value)}
       />
-      {error && <p className="error">Error: {error}</p>}
-      {existingSessionId && (
-        <div className="callout warning">
-          <h4>A session for this issue already exists</h4>
-          <p>
-            Linear allows only one active planning poker session per StoryPoint
-            issue.{" "}
-            <a href={`#/sessions/${existingSessionId}`}>Open the existing session →</a>
-          </p>
-        </div>
-      )}
 
       {selected.size > 0 && (
         <div className="chips">
@@ -543,6 +600,17 @@ function ParticipantsStep({
           {creating ? "Creating session…" : `Create session (${selected.size} participants)`}
         </button>
       </p>
+      {error && <p className="error">Error: {error}</p>}
+      {existingSessionId && (
+        <div className="callout warning">
+          <h4>A session for this issue already exists</h4>
+          <p>
+            Linear allows only one active planning poker session per StoryPoint
+            issue.{" "}
+            <a href={`#/sessions/${existingSessionId}`}>Open the existing session →</a>
+          </p>
+        </div>
+      )}
     </div>
   );
 }

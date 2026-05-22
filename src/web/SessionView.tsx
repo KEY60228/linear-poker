@@ -113,7 +113,7 @@ export function SessionView({
       <Header state={state} />
       {error && <p className="error">Error: {error}</p>}
       <ParticipantList participants={state.participants} status={state.status} viewerId={viewer?.id ?? null} />
-      {state.status !== "finalized" && (
+      {state.status === "voting" && (
         <ParticipantManager
           sessionId={sessionId}
           participants={state.participants}
