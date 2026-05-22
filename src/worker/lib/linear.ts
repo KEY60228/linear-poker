@@ -122,8 +122,9 @@ export async function getViewer(accessToken: string): Promise<ViewerDTO> {
 }
 
 export async function listTeams(accessToken: string): Promise<TeamDTO[]> {
-  const organization = await clientFor(accessToken).organization;
-  const conn = await clientFor(accessToken).teams({ first: 100 });
+  const client = clientFor(accessToken);
+  const [viewer, organization] = await Promise.all([client.viewer, client.organization]);
+  const conn = await viewer.teams({ first: 100 });
   const urlSlug = organization.urlKey;
   return conn.nodes.map((t) => ({
     id: t.id,

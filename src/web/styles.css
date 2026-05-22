@@ -157,12 +157,14 @@ button:disabled {
   flex-wrap: wrap;
   gap: 0.25rem 1rem;
   font-size: 0.875rem;
+  align-items: center;
+  line-height: 1.5;
 }
 
 .selection-row {
   display: flex;
   gap: 0.5rem;
-  align-items: baseline;
+  align-items: center;
 }
 
 .selection-row dt {
