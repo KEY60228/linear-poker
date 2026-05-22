@@ -64,6 +64,7 @@ export interface TeamDTO {
   id: string;
   name: string;
   key: string;
+  url: string;
 }
 
 export interface ProjectDTO {
@@ -121,8 +122,15 @@ export async function getViewer(accessToken: string): Promise<ViewerDTO> {
 }
 
 export async function listTeams(accessToken: string): Promise<TeamDTO[]> {
+  const organization = await clientFor(accessToken).organization;
   const conn = await clientFor(accessToken).teams({ first: 100 });
-  return conn.nodes.map((t) => ({ id: t.id, name: t.name, key: t.key }));
+  const urlSlug = organization.urlKey;
+  return conn.nodes.map((t) => ({
+    id: t.id,
+    name: t.name,
+    key: t.key,
+    url: `https://linear.app/${urlSlug}/team/${t.key}`,
+  }));
 }
 
 export async function listBacklogProjects(
@@ -202,8 +210,9 @@ function toUserDTO(u: {
 export async function getTeamSummary(
   accessToken: string,
   teamId: string,
-): Promise<{ id: string; name: string; key: string; scale: EstimateScaleDTO }> {
-  const team = await clientFor(accessToken).team(teamId);
+): Promise<{ id: string; name: string; key: string; url: string; scale: EstimateScaleDTO }> {
+  const client = clientFor(accessToken);
+  const [team, organization] = await Promise.all([client.team(teamId), client.organization]);
   const type = (team.issueEstimationType ?? "notUsed") as EstimateScaleType;
   const allowZero = team.issueEstimationAllowZero ?? false;
   const extended = team.issueEstimationExtended ?? false;
@@ -211,6 +220,7 @@ export async function getTeamSummary(
     id: team.id,
     name: team.name,
     key: team.key,
+    url: `https://linear.app/${organization.urlKey}/team/${team.key}`,
     scale: { type, allowZero, options: buildScaleOptions(type, allowZero, extended) },
   };
 }

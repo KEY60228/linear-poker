@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   api,
+  apiErrorBody,
+  apiErrorCode,
   type Project,
   type StoryPointIssue,
   type Team,
@@ -16,9 +18,44 @@ function stepDelta(from: Step, to: Step): number {
 }
 
 const HISTORY_KEY = "wizardStep";
+const STORAGE_KEY = "linear-poker:wizard-state";
 
 function pushStep(s: Step) {
   history.pushState({ [HISTORY_KEY]: s }, "");
+}
+
+type PersistedState = {
+  team: Team | null;
+  project: Project | null;
+  issue: StoryPointIssue | null;
+  labelName: string;
+  issueLoaded: boolean;
+};
+
+function persist(state: PersistedState) {
+  try {
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch {
+    // ignore quota / privacy-mode errors
+  }
+}
+
+function readPersisted(): PersistedState | null {
+  try {
+    const raw = sessionStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as PersistedState;
+  } catch {
+    return null;
+  }
+}
+
+function clearPersisted() {
+  try {
+    sessionStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // ignore
+  }
 }
 
 export function SessionWizard({ viewer }: { viewer: Viewer | null }) {
@@ -40,11 +77,44 @@ export function SessionWizard({ viewer }: { viewer: Viewer | null }) {
     api.teams().then(setTeams).catch((e) => setError(String(e)));
   }, []);
 
-  // Seed the current history entry with the wizard's starting step. The
-  // wizard has no persistent data, so each mount starts fresh at "team".
+  // Seed the current history entry. On a normal mount we start at "team",
+  // but if the user just navigated back from a session view, the previous
+  // history entry's wizardStep tells us where to land. In that case we
+  // restore team/project/issue from sessionStorage so the user can pick
+  // participants again without re-walking the whole wizard.
   useEffect(() => {
+    const s = (history.state as { [HISTORY_KEY]?: Step } | null)?.[HISTORY_KEY];
+    if (s && s !== "team") {
+      const persisted = readPersisted();
+      if (persisted) {
+        if (persisted.team) setTeam(persisted.team);
+        if (persisted.project) setProject(persisted.project);
+        if (persisted.issue) setIssue(persisted.issue);
+        if (persisted.labelName) setLabelName(persisted.labelName);
+        setIssueLoaded(persisted.issueLoaded);
+        setStep(s);
+        // Re-fetch projects if we landed on a step that lists them.
+        if ((s === "project" || s === "issue" || s === "participants") && persisted.team) {
+          api.backlogProjects(persisted.team.id).then(setProjects).catch(() => undefined);
+        }
+        return;
+      }
+    }
     history.replaceState({ [HISTORY_KEY]: "team" }, "");
   }, []);
+
+  // Mirror the wizard's data into sessionStorage so a remount (e.g. after
+  // browser-back from a created session) can land on the right step. We only
+  // write once the user has actually picked something, so the initial null
+  // state doesn't clobber a prior persisted snapshot during the restore
+  // render cycle.
+  useEffect(() => {
+    if (team || project || issue) {
+      persist({ team, project, issue, labelName, issueLoaded });
+    } else if (step === "team") {
+      clearPersisted();
+    }
+  }, [step, team, project, issue, labelName, issueLoaded]);
 
   // Browser back/forward — rewind the wizard to the popped step.
   useEffect(() => {
@@ -63,8 +133,9 @@ export function SessionWizard({ viewer }: { viewer: Viewer | null }) {
         setIssueLoaded(false);
         setStep("project");
       } else if (s === "issue") {
-        setIssue(null);
-        setIssueLoaded(false);
+        // Going back from "participants" — we already detected the issue for
+        // the current project, so keep it in state instead of resetting and
+        // hanging on "Detecting StoryPoint issue…" forever.
         setStep("issue");
       }
       // "participants" via forward isn't restorable here — the Next button is
@@ -145,7 +216,6 @@ export function SessionWizard({ viewer }: { viewer: Viewer | null }) {
       {step === "issue" && (
         <IssuePreview
           issue={issue}
-          project={project}
           labelName={labelName}
           loaded={issueLoaded}
           canProceed={!!issue}
@@ -230,15 +300,19 @@ function SelectionContext({
 }) {
   // Show only the items the user has already locked in (skip the one they're
   // currently choosing).
-  const parts: { label: string; value: string }[] = [];
+  const parts: { label: string; href: string; text: string }[] = [];
   if (team && step !== "team") {
-    parts.push({ label: "Team", value: `${team.key} · ${team.name}` });
+    parts.push({ label: "Team", href: team.url, text: `${team.key} · ${team.name}` });
   }
   if (project && step !== "project" && step !== "team") {
-    parts.push({ label: "Project", value: project.name });
+    parts.push({ label: "Project", href: project.url, text: project.name });
   }
   if (issue && step === "participants") {
-    parts.push({ label: "Issue", value: `${issue.identifier} ${issue.title}` });
+    parts.push({
+      label: "Issue",
+      href: issue.url,
+      text: `${issue.identifier} ${issue.title}`,
+    });
   }
   if (parts.length === 0) return null;
   return (
@@ -246,7 +320,11 @@ function SelectionContext({
       {parts.map((p) => (
         <div className="selection-row" key={p.label}>
           <dt>{p.label}</dt>
-          <dd>{p.value}</dd>
+          <dd>
+            <a href={p.href} target="_blank" rel="noreferrer">
+              {p.text}
+            </a>
+          </dd>
         </div>
       ))}
     </dl>
@@ -302,7 +380,6 @@ function ProjectList({
 
 function IssuePreview({
   issue,
-  project,
   labelName,
   loaded,
   canProceed,
@@ -310,7 +387,6 @@ function IssuePreview({
   onProceed,
 }: {
   issue: StoryPointIssue | null;
-  project: Project | null;
   labelName: string;
   loaded: boolean;
   canProceed: boolean;
@@ -318,15 +394,6 @@ function IssuePreview({
   onProceed: () => void;
 }) {
   if (!loaded) return <p>Detecting StoryPoint issue…</p>;
-
-  const projectLink = project && (
-    <p className="muted">
-      Linear project:{" "}
-      <a href={project.url} target="_blank" rel="noreferrer">
-        {project.name}
-      </a>
-    </p>
-  );
 
   if (!issue) {
     return (
@@ -336,7 +403,6 @@ function IssuePreview({
           This project has no issue labelled <code>{labelName}</code>. Create one
           (or apply the label to an existing issue) and try again.
         </p>
-        {projectLink}
         <button onClick={onRetry}>Retry detection</button>
       </div>
     );
@@ -354,7 +420,6 @@ function IssuePreview({
       <p className="muted">
         Current estimate: {issue.estimate === null ? "—" : String(issue.estimate)}
       </p>
-      {projectLink}
       {issue.duplicateCount > 0 && (
         <p className="warning">
           ⚠ {issue.duplicateCount} other issue(s) in this project also carry the{" "}
@@ -388,6 +453,7 @@ function ParticipantsStep({
   const [selected, setSelected] = useState<Map<string, User>>(new Map());
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [existingSessionId, setExistingSessionId] = useState<string | null>(null);
 
   useEffect(() => {
     api
@@ -450,6 +516,7 @@ function ParticipantsStep({
     if (selected.size === 0) return;
     setCreating(true);
     setError(null);
+    setExistingSessionId(null);
     try {
       const { id } = await api.createSession({
         teamId: team.id,
@@ -459,7 +526,15 @@ function ParticipantsStep({
       });
       window.location.hash = `#/sessions/${id}`;
     } catch (e) {
-      setError(String(e));
+      if (apiErrorCode(e) === "session_already_exists") {
+        const body = apiErrorBody(e);
+        const existing = body && typeof body.existingSessionId === "string"
+          ? body.existingSessionId
+          : null;
+        setExistingSessionId(existing);
+      } else {
+        setError(String(e));
+      }
       setCreating(false);
     }
   }
@@ -478,7 +553,6 @@ function ParticipantsStep({
         value={query}
         onChange={(e) => setQuery(e.target.value)}
       />
-      {error && <p className="error">Error: {error}</p>}
 
       {selected.size > 0 && (
         <div className="chips">
@@ -526,6 +600,17 @@ function ParticipantsStep({
           {creating ? "Creating session…" : `Create session (${selected.size} participants)`}
         </button>
       </p>
+      {error && <p className="error">Error: {error}</p>}
+      {existingSessionId && (
+        <div className="callout warning">
+          <h4>A session for this issue already exists</h4>
+          <p>
+            Linear allows only one active planning poker session per StoryPoint
+            issue.{" "}
+            <a href={`#/sessions/${existingSessionId}`}>Open the existing session →</a>
+          </p>
+        </div>
+      )}
     </div>
   );
 }

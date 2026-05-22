@@ -3,7 +3,7 @@ import type { EstimateScaleDTO } from "./linear";
 export type SessionStatus = "voting" | "revealed" | "finalized";
 
 export interface SessionMeta {
-  team: { id: string; name: string; key: string };
+  team: { id: string; name: string; key: string; url?: string };
   project: { id: string; name: string; url: string };
   issue: {
     id: string;
@@ -133,7 +133,7 @@ export interface SessionListItem {
   status: SessionStatus;
   currentRoundNo: number;
   createdAt: number;
-  team: { id: string; name: string; key: string };
+  team: { id: string; name: string; key: string; url?: string };
   project: { id: string; name: string; url: string };
   issue: { id: string; identifier: string; title: string; url: string };
   participantCount: number;
