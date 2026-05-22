@@ -145,7 +145,10 @@ Session
 
   finalized:
     - Linear に書き戻し済み
-    - 履歴として参照のみ
+    - 履歴として参照可能
+    - 「Revert finalization」操作で revealed に戻せる（ローカル状態のみ変更。
+      Linear 側の Estimate / Project status は触らない — Linear 側で値が
+      revert された後にアプリ側の状態を追従させる用途）
 ```
 
 ### データモデル（D1）

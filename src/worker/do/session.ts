@@ -212,6 +212,22 @@ export class SessionDO extends DurableObject<Env> {
     ]);
   }
 
+  /**
+   * Reopen a finalized session — drops the local final_estimates row and
+   * flips status back to "revealed". Does NOT touch Linear: this exists for
+   * the case where Linear's side (estimate or project status) has been
+   * reverted externally and our local record needs to follow suit.
+   */
+  async unfinalize(sessionId: string): Promise<void> {
+    const session = await this.requireSession(sessionId);
+    if (session.status !== "finalized") throw new Error("not_finalized");
+    const db = this.env.DB;
+    await db.batch([
+      db.prepare("DELETE FROM final_estimates WHERE session_id = ?").bind(sessionId),
+      db.prepare("UPDATE sessions SET status = 'revealed' WHERE id = ?").bind(sessionId),
+    ]);
+  }
+
   async getState(sessionId: string): Promise<SessionStateDTO> {
     const session = await this.requireSession(sessionId);
     return await this.buildStateDTO(session);

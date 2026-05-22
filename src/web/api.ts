@@ -220,6 +220,11 @@ export const api = {
       `/api/sessions/${encodeURIComponent(sessionId)}/revote`,
       {},
     ),
+  unfinalize: (sessionId: string) =>
+    jsonPost<{ ok: true }>(
+      `/api/sessions/${encodeURIComponent(sessionId)}/unfinalize`,
+      {},
+    ),
   logout: () =>
     fetch("/auth/logout", { method: "POST", credentials: "same-origin" }),
 };

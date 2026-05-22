@@ -108,6 +108,22 @@ export function SessionView({
     }
   }
 
+  async function unfinalize() {
+    if (
+      !window.confirm(
+        "Revert this finalization?\n\nThis only clears the local record — it does NOT undo the Linear writeback. Use this when Linear's estimate or project status has already been reverted externally and you want the app to reflect that.",
+      )
+    ) {
+      return;
+    }
+    try {
+      await api.unfinalize(sessionId);
+      await refresh();
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
   return (
     <section className="session">
       <Header state={state} />
@@ -149,7 +165,9 @@ export function SessionView({
       {state.status === "revealed" && (
         <RevealedView state={state} onFinalize={finalize} onRevote={revote} />
       )}
-      {state.status === "finalized" && <FinalizedView state={state} />}
+      {state.status === "finalized" && (
+        <FinalizedView state={state} onUnfinalize={unfinalize} />
+      )}
     </section>
   );
 }
@@ -438,7 +456,13 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function FinalizedView({ state }: { state: SessionState }) {
+function FinalizedView({
+  state,
+  onUnfinalize,
+}: {
+  state: SessionState;
+  onUnfinalize: () => Promise<void>;
+}) {
   const fin = state.finalEstimate;
   if (!fin) return null;
   const finalizedBy =
@@ -459,6 +483,15 @@ function FinalizedView({ state }: { state: SessionState }) {
         </a>{" "}
         · finalized by {finalizedBy} ·{" "}
         {new Date(fin.finalizedAt).toLocaleString()}
+      </p>
+      <p className="actions">
+        <button className="secondary-button" onClick={onUnfinalize}>
+          Revert finalization
+        </button>
+      </p>
+      <p className="muted">
+        Use this when Linear's estimate or project status has been reverted
+        externally. This only updates the local record — Linear is left as-is.
       </p>
     </div>
   );

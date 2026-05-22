@@ -276,6 +276,19 @@ api.post("/sessions/:id/finalize", async (c) => {
   return c.json({ ok: true });
 });
 
+api.post("/sessions/:id/unfinalize", async (c) => {
+  const id = c.req.param("id");
+  try {
+    await doStub(c, id).unfinalize(id);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg === "not_finalized") return c.json({ error: msg }, 409);
+    if (msg === "session_not_found") return c.json({ error: "not_found" }, 404);
+    throw e;
+  }
+  return c.json({ ok: true });
+});
+
 api.post("/sessions/:id/revote", async (c) => {
   const id = c.req.param("id");
   try {
