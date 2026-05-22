@@ -134,7 +134,7 @@ api.post("/sessions", async (c) => {
     issueId: body.issueId,
     facilitatorId: viewerId(c),
     meta: {
-      team: { id: team.id, name: team.name, key: team.key },
+      team: { id: team.id, name: team.name, key: team.key, url: team.url },
       project: { id: project.id, name: project.name, url: project.url },
       issue,
       scale: team.scale,

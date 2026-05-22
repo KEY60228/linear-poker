@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   api,
+  apiErrorBody,
+  apiErrorCode,
   type Project,
   type StoryPointIssue,
   type Team,
@@ -63,8 +65,9 @@ export function SessionWizard({ viewer }: { viewer: Viewer | null }) {
         setIssueLoaded(false);
         setStep("project");
       } else if (s === "issue") {
-        setIssue(null);
-        setIssueLoaded(false);
+        // Going back from "participants" — we already detected the issue for
+        // the current project, so keep it in state instead of resetting and
+        // hanging on "Detecting StoryPoint issue…" forever.
         setStep("issue");
       }
       // "participants" via forward isn't restorable here — the Next button is
@@ -145,7 +148,6 @@ export function SessionWizard({ viewer }: { viewer: Viewer | null }) {
       {step === "issue" && (
         <IssuePreview
           issue={issue}
-          project={project}
           labelName={labelName}
           loaded={issueLoaded}
           canProceed={!!issue}
@@ -230,15 +232,19 @@ function SelectionContext({
 }) {
   // Show only the items the user has already locked in (skip the one they're
   // currently choosing).
-  const parts: { label: string; value: string }[] = [];
+  const parts: { label: string; href: string; text: string }[] = [];
   if (team && step !== "team") {
-    parts.push({ label: "Team", value: `${team.key} · ${team.name}` });
+    parts.push({ label: "Team", href: team.url, text: `${team.key} · ${team.name}` });
   }
   if (project && step !== "project" && step !== "team") {
-    parts.push({ label: "Project", value: project.name });
+    parts.push({ label: "Project", href: project.url, text: project.name });
   }
   if (issue && step === "participants") {
-    parts.push({ label: "Issue", value: `${issue.identifier} ${issue.title}` });
+    parts.push({
+      label: "Issue",
+      href: issue.url,
+      text: `${issue.identifier} ${issue.title}`,
+    });
   }
   if (parts.length === 0) return null;
   return (
@@ -246,7 +252,11 @@ function SelectionContext({
       {parts.map((p) => (
         <div className="selection-row" key={p.label}>
           <dt>{p.label}</dt>
-          <dd>{p.value}</dd>
+          <dd>
+            <a href={p.href} target="_blank" rel="noreferrer">
+              {p.text}
+            </a>
+          </dd>
         </div>
       ))}
     </dl>
@@ -302,7 +312,6 @@ function ProjectList({
 
 function IssuePreview({
   issue,
-  project,
   labelName,
   loaded,
   canProceed,
@@ -310,7 +319,6 @@ function IssuePreview({
   onProceed,
 }: {
   issue: StoryPointIssue | null;
-  project: Project | null;
   labelName: string;
   loaded: boolean;
   canProceed: boolean;
@@ -318,15 +326,6 @@ function IssuePreview({
   onProceed: () => void;
 }) {
   if (!loaded) return <p>Detecting StoryPoint issue…</p>;
-
-  const projectLink = project && (
-    <p className="muted">
-      Linear project:{" "}
-      <a href={project.url} target="_blank" rel="noreferrer">
-        {project.name}
-      </a>
-    </p>
-  );
 
   if (!issue) {
     return (
@@ -336,7 +335,6 @@ function IssuePreview({
           This project has no issue labelled <code>{labelName}</code>. Create one
           (or apply the label to an existing issue) and try again.
         </p>
-        {projectLink}
         <button onClick={onRetry}>Retry detection</button>
       </div>
     );
@@ -354,7 +352,6 @@ function IssuePreview({
       <p className="muted">
         Current estimate: {issue.estimate === null ? "—" : String(issue.estimate)}
       </p>
-      {projectLink}
       {issue.duplicateCount > 0 && (
         <p className="warning">
           ⚠ {issue.duplicateCount} other issue(s) in this project also carry the{" "}
@@ -388,6 +385,7 @@ function ParticipantsStep({
   const [selected, setSelected] = useState<Map<string, User>>(new Map());
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [existingSessionId, setExistingSessionId] = useState<string | null>(null);
 
   useEffect(() => {
     api
@@ -450,6 +448,7 @@ function ParticipantsStep({
     if (selected.size === 0) return;
     setCreating(true);
     setError(null);
+    setExistingSessionId(null);
     try {
       const { id } = await api.createSession({
         teamId: team.id,
@@ -459,7 +458,15 @@ function ParticipantsStep({
       });
       window.location.hash = `#/sessions/${id}`;
     } catch (e) {
-      setError(String(e));
+      if (apiErrorCode(e) === "session_already_exists") {
+        const body = apiErrorBody(e);
+        const existing = body && typeof body.existingSessionId === "string"
+          ? body.existingSessionId
+          : null;
+        setExistingSessionId(existing);
+      } else {
+        setError(String(e));
+      }
       setCreating(false);
     }
   }
@@ -479,6 +486,16 @@ function ParticipantsStep({
         onChange={(e) => setQuery(e.target.value)}
       />
       {error && <p className="error">Error: {error}</p>}
+      {existingSessionId && (
+        <div className="callout warning">
+          <h4>A session for this issue already exists</h4>
+          <p>
+            Linear allows only one active planning poker session per StoryPoint
+            issue.{" "}
+            <a href={`#/sessions/${existingSessionId}`}>Open the existing session →</a>
+          </p>
+        </div>
+      )}
 
       {selected.size > 0 && (
         <div className="chips">

@@ -1,4 +1,4 @@
-export type Team = { id: string; name: string; key: string };
+export type Team = { id: string; name: string; key: string; url: string };
 export type Project = {
   id: string;
   name: string;
@@ -32,7 +32,7 @@ export type EstimateScale = {
 };
 
 export type SessionMeta = {
-  team: { id: string; name: string; key: string };
+  team: { id: string; name: string; key: string; url?: string };
   project: { id: string; name: string; url: string };
   issue: {
     id: string;
@@ -52,7 +52,7 @@ export type SessionListItem = {
   status: SessionStatus;
   currentRoundNo: number;
   createdAt: number;
-  team: { id: string; name: string; key: string };
+  team: { id: string; name: string; key: string; url?: string };
   project: { id: string; name: string; url: string };
   issue: { id: string; identifier: string; title: string; url: string };
   participantCount: number;
@@ -92,9 +92,46 @@ export type SessionState = {
   finalEstimate: FinalEstimate | null;
 };
 
+export class ApiError extends Error {
+  constructor(
+    public status: number,
+    public statusText: string,
+    public body: unknown,
+  ) {
+    super(`${status} ${statusText}`);
+    this.name = "ApiError";
+  }
+}
+
+function isRecord(x: unknown): x is Record<string, unknown> {
+  return typeof x === "object" && x !== null;
+}
+
+export function apiErrorCode(e: unknown): string | null {
+  if (e instanceof ApiError && isRecord(e.body) && typeof e.body.error === "string") {
+    return e.body.error;
+  }
+  return null;
+}
+
+export function apiErrorBody(e: unknown): Record<string, unknown> | null {
+  if (e instanceof ApiError && isRecord(e.body)) return e.body;
+  return null;
+}
+
+async function readErrorBody(res: Response): Promise<unknown> {
+  try {
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
 async function jsonGet<T>(path: string): Promise<T> {
   const res = await fetch(path, { credentials: "same-origin" });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  if (!res.ok) {
+    throw new ApiError(res.status, res.statusText, await readErrorBody(res));
+  }
   return (await res.json()) as T;
 }
 
@@ -106,15 +143,16 @@ async function jsonPost<T>(path: string, body: unknown): Promise<T> {
     body: JSON.stringify(body ?? {}),
   });
   if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`${res.status} ${text || res.statusText}`);
+    throw new ApiError(res.status, res.statusText, await readErrorBody(res));
   }
   return (await res.json()) as T;
 }
 
 async function jsonDelete<T>(path: string): Promise<T> {
   const res = await fetch(path, { method: "DELETE", credentials: "same-origin" });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  if (!res.ok) {
+    throw new ApiError(res.status, res.statusText, await readErrorBody(res));
+  }
   return (await res.json()) as T;
 }
 

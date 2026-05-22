@@ -113,18 +113,20 @@ export function SessionView({
       <Header state={state} />
       {error && <p className="error">Error: {error}</p>}
       <ParticipantList participants={state.participants} status={state.status} viewerId={viewer?.id ?? null} />
-      <ParticipantManager
-        sessionId={sessionId}
-        participants={state.participants}
-        teamId={state.meta.team.id}
-        onChanged={async () => {
-          try {
-            setState(await api.getSession(sessionId));
-          } catch (e) {
-            setError(String(e));
-          }
-        }}
-      />
+      {state.status !== "finalized" && (
+        <ParticipantManager
+          sessionId={sessionId}
+          participants={state.participants}
+          teamId={state.meta.team.id}
+          onChanged={async () => {
+            try {
+              setState(await api.getSession(sessionId));
+            } catch (e) {
+              setError(String(e));
+            }
+          }}
+        />
+      )}
       {state.status === "voting" && isParticipant && (
         <VotePad
           state={state}
