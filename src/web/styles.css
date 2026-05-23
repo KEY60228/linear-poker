@@ -744,3 +744,7 @@ button:disabled {
 .ref-issue:hover {
   text-decoration: underline;
 }
+
+.show-more-row {
+  margin: 0.5rem 0 0;
+}

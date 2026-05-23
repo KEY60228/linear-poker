@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { api, type StoryPointReference, type Team } from "./api";
 
 const SELECTED_TEAM_KEY = "linear-poker:references-team";
+const PAGE_SIZE = 10;
 
 export function ReferenceScale() {
   const [teams, setTeams] = useState<Team[] | null>(null);
@@ -10,6 +11,7 @@ export function ReferenceScale() {
   const [labelName, setLabelName] = useState<string>("story-point");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [shownPerGroup, setShownPerGroup] = useState<Map<number, number>>(new Map());
 
   useEffect(() => {
     api
@@ -28,6 +30,7 @@ export function ReferenceScale() {
     sessionStorage.setItem(SELECTED_TEAM_KEY, teamId);
     setLoading(true);
     setError(null);
+    setShownPerGroup(new Map());
     let cancelled = false;
     api
       .storyPointReferences(teamId)
@@ -42,6 +45,18 @@ export function ReferenceScale() {
       cancelled = true;
     };
   }, [teamId]);
+
+  function shownFor(estimate: number): number {
+    return shownPerGroup.get(estimate) ?? PAGE_SIZE;
+  }
+
+  function showMore(estimate: number) {
+    setShownPerGroup((prev) => {
+      const next = new Map(prev);
+      next.set(estimate, shownFor(estimate) + PAGE_SIZE);
+      return next;
+    });
+  }
 
   const grouped = useMemo(() => {
     const m = new Map<number, StoryPointReference[]>();
@@ -101,6 +116,9 @@ export function ReferenceScale() {
         <div className="estimate-groups">
           {sortedKeys.map((estimate) => {
             const list = grouped.get(estimate)!;
+            const limit = shownFor(estimate);
+            const visible = list.slice(0, limit);
+            const remaining = list.length - visible.length;
             return (
               <div key={estimate} className="estimate-group">
                 <h3 className="estimate-group-title">
@@ -108,7 +126,7 @@ export function ReferenceScale() {
                   <span className="muted">{list.length} project(s)</span>
                 </h3>
                 <ul className="list">
-                  {list.map((i) => (
+                  {visible.map((i) => (
                     <li key={i.id}>
                       <div className="row row-static">
                         <span className="ref-main">
@@ -132,6 +150,17 @@ export function ReferenceScale() {
                     </li>
                   ))}
                 </ul>
+                {remaining > 0 && (
+                  <p className="show-more-row">
+                    <button
+                      className="secondary-button"
+                      onClick={() => showMore(estimate)}
+                    >
+                      Show {Math.min(PAGE_SIZE, remaining)} more
+                      <span className="muted"> ({remaining} remaining)</span>
+                    </button>
+                  </p>
+                )}
               </div>
             );
           })}
