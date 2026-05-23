@@ -45,6 +45,7 @@ wrangler.jsonc      # Cloudflare bindings + cron
 - **Slack notifications fire only on session start and the daily reminder.** Reveal and finalize stay in-app; do not post to Slack on those events.
 - **No Linear↔Slack user mapping.** Reminders embed Linear `displayName` as plain text — do not @-mention. Setup stays at `SLACK_WEBHOOK_URL` only; do not add Bot Token requirements without an explicit spec change.
 - Anyone can finalize. Finalize writes back to Linear's Estimate field (snapped to the workspace's Estimate scale) AND moves the project's status to `Planned` (looked up by `type === "planned"` from `projectStatuses`). Both writes are idempotent so a retry after a partial failure is safe.
+- "Revert finalization" exists for the case where Linear's estimate or project status is reverted externally. It drops `final_estimates` locally and flips status back to `revealed`. **It does not touch Linear** — Linear remains the source of truth and the user must reconcile it manually if needed.
 
 ## Doing work
 
