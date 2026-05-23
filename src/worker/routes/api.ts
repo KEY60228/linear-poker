@@ -8,6 +8,7 @@ import {
   getTeamSummary,
   getViewer,
   listBacklogProjects,
+  listEstimatedStoryPointIssues,
   listTeamMembers,
   listTeams,
   listUsersByIds,
@@ -68,6 +69,13 @@ api.get("/users", async (c) => {
   const q = (c.req.query("q") ?? "").trim();
   if (q.length < 2) return c.json({ users: [] });
   return c.json({ users: await searchUsers(token(c), q) });
+});
+
+api.get("/teams/:teamId/storypoint-references", async (c) => {
+  const teamId = c.req.param("teamId");
+  const label = c.env.STORY_POINT_LABEL_NAME;
+  const issues = await listEstimatedStoryPointIssues(token(c), teamId, label);
+  return c.json({ issues, labelName: label });
 });
 
 api.get("/projects/:projectId/storypoint-issue", async (c) => {

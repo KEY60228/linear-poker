@@ -3,16 +3,19 @@ import { api, type AuthStatus, type Viewer } from "./api";
 import { SessionWizard } from "./SessionWizard";
 import { SessionView } from "./SessionView";
 import { SessionList } from "./SessionList";
+import { ReferenceScale } from "./ReferenceScale";
 
 type Route =
   | { kind: "list" }
   | { kind: "new" }
-  | { kind: "session"; id: string };
+  | { kind: "session"; id: string }
+  | { kind: "references" };
 
 function readRoute(): Route {
   const hash = window.location.hash;
   if (hash === "" || hash === "#" || hash === "#/") return { kind: "list" };
   if (hash === "#/new") return { kind: "new" };
+  if (hash === "#/references") return { kind: "references" };
   const m = hash.match(/^#\/sessions\/([A-Za-z0-9_-]+)$/);
   if (m && m[1]) return { kind: "session", id: m[1] };
   return { kind: "list" };
@@ -90,6 +93,7 @@ export function App() {
       {status?.authenticated && route.kind === "session" && (
         <SessionView sessionId={route.id} viewer={viewer} />
       )}
+      {status?.authenticated && route.kind === "references" && <ReferenceScale />}
     </main>
   );
 }

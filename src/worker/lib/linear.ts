@@ -321,6 +321,62 @@ function buildScaleOptions(
   return filtered.map((n) => ({ value: String(n), label: String(n) }));
 }
 
+export interface StoryPointIssueRefDTO {
+  id: string;
+  identifier: string;
+  title: string;
+  url: string;
+  estimate: number;
+  project: { id: string; name: string; url: string } | null;
+}
+
+/**
+ * Pull every StoryPoint-labelled Issue in the given team that has an estimate
+ * set, so the UI can group them by estimate as a calibration reference.
+ */
+export async function listEstimatedStoryPointIssues(
+  accessToken: string,
+  teamId: string,
+  labelName: string,
+): Promise<StoryPointIssueRefDTO[]> {
+  const client = clientFor(accessToken);
+  const conn = await client.issues({
+    first: 250,
+    filter: {
+      team: { id: { eq: teamId } },
+      labels: { some: { name: { eq: labelName } } },
+      estimate: { null: false },
+    },
+  });
+  const issues = conn.nodes;
+  if (issues.length === 0) return [];
+
+  const projectIds = [
+    ...new Set(issues.map((i) => i.projectId).filter((id): id is string => !!id)),
+  ];
+  const projectMap = new Map<string, { id: string; name: string; url: string }>();
+  if (projectIds.length > 0) {
+    const projConn = await client.projects({
+      first: Math.min(250, projectIds.length),
+      filter: { id: { in: projectIds } },
+    });
+    for (const p of projConn.nodes) {
+      projectMap.set(p.id, { id: p.id, name: p.name, url: p.url });
+    }
+  }
+
+  return issues
+    .filter((i): i is typeof i & { estimate: number } => typeof i.estimate === "number")
+    .map((i) => ({
+      id: i.id,
+      identifier: i.identifier,
+      title: i.title,
+      url: i.url,
+      estimate: i.estimate,
+      project: i.projectId ? projectMap.get(i.projectId) ?? null : null,
+    }));
+}
+
 export async function findStoryPointIssue(
   accessToken: string,
   projectId: string,
