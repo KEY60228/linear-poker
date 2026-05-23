@@ -75,6 +75,19 @@ export type StoryPointReference = {
   project: { id: string; name: string; url: string } | null;
 };
 
+export type StoryPointReferenceGroup = {
+  estimate: number;
+  issues: StoryPointReference[];
+  endCursor: string | null;
+  hasNextPage: boolean;
+};
+
+export type StoryPointReferencePage = {
+  issues: StoryPointReference[];
+  endCursor: string | null;
+  hasNextPage: boolean;
+};
+
 export type ParticipantState = {
   userId: string;
   displayName: string;
@@ -178,8 +191,12 @@ export const api = {
       `/api/projects/${encodeURIComponent(projectId)}/storypoint-issue`,
     ),
   storyPointReferences: (teamId: string) =>
-    jsonGet<{ issues: StoryPointReference[]; labelName: string }>(
+    jsonGet<{ groups: StoryPointReferenceGroup[]; labelName: string }>(
       `/api/teams/${encodeURIComponent(teamId)}/storypoint-references`,
+    ),
+  storyPointReferencesMore: (teamId: string, estimate: number, after: string) =>
+    jsonGet<StoryPointReferencePage>(
+      `/api/teams/${encodeURIComponent(teamId)}/storypoint-references/${estimate}?after=${encodeURIComponent(after)}`,
     ),
   teamMembers: (teamId: string) =>
     jsonGet<{ users: User[] }>(

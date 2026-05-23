@@ -1,17 +1,20 @@
-import { useEffect, useMemo, useState } from "react";
-import { api, type StoryPointReference, type Team } from "./api";
+import { useEffect, useState } from "react";
+import {
+  api,
+  type StoryPointReferenceGroup,
+  type Team,
+} from "./api";
 
 const SELECTED_TEAM_KEY = "linear-poker:references-team";
-const PAGE_SIZE = 10;
 
 export function ReferenceScale() {
   const [teams, setTeams] = useState<Team[] | null>(null);
   const [teamId, setTeamId] = useState<string | null>(null);
-  const [issues, setIssues] = useState<StoryPointReference[] | null>(null);
+  const [groups, setGroups] = useState<StoryPointReferenceGroup[] | null>(null);
   const [labelName, setLabelName] = useState<string>("story-point");
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState<Set<number>>(new Set());
   const [error, setError] = useState<string | null>(null);
-  const [shownPerGroup, setShownPerGroup] = useState<Map<number, number>>(new Map());
 
   useEffect(() => {
     api
@@ -30,13 +33,19 @@ export function ReferenceScale() {
     sessionStorage.setItem(SELECTED_TEAM_KEY, teamId);
     setLoading(true);
     setError(null);
-    setShownPerGroup(new Map());
     let cancelled = false;
     api
       .storyPointReferences(teamId)
       .then((r) => {
         if (cancelled) return;
-        setIssues(r.issues);
+        setGroups(
+          [...r.groups]
+            .sort((a, b) => a.estimate - b.estimate)
+            .map((g) => ({
+              ...g,
+              issues: sortIssues(g.issues),
+            })),
+        );
         setLabelName(r.labelName);
       })
       .catch((e) => !cancelled && setError(String(e)))
@@ -46,36 +55,38 @@ export function ReferenceScale() {
     };
   }, [teamId]);
 
-  function shownFor(estimate: number): number {
-    return shownPerGroup.get(estimate) ?? PAGE_SIZE;
-  }
-
-  function showMore(estimate: number) {
-    setShownPerGroup((prev) => {
-      const next = new Map(prev);
-      next.set(estimate, shownFor(estimate) + PAGE_SIZE);
-      return next;
-    });
-  }
-
-  const grouped = useMemo(() => {
-    const m = new Map<number, StoryPointReference[]>();
-    if (!issues) return m;
-    for (const i of issues) {
-      const arr = m.get(i.estimate) ?? [];
-      arr.push(i);
-      m.set(i.estimate, arr);
-    }
-    for (const arr of m.values()) {
-      arr.sort((a, b) =>
-        (a.project?.name ?? a.identifier).localeCompare(b.project?.name ?? b.identifier),
+  async function loadMore(estimate: number) {
+    if (!teamId || !groups) return;
+    const group = groups.find((g) => g.estimate === estimate);
+    if (!group || !group.hasNextPage || !group.endCursor) return;
+    setLoadingMore((prev) => new Set(prev).add(estimate));
+    try {
+      const page = await api.storyPointReferencesMore(teamId, estimate, group.endCursor);
+      setGroups((prev) =>
+        prev?.map((g) =>
+          g.estimate === estimate
+            ? {
+                ...g,
+                issues: sortIssues([...g.issues, ...page.issues]),
+                endCursor: page.endCursor,
+                hasNextPage: page.hasNextPage,
+              }
+            : g,
+        ) ?? null,
       );
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setLoadingMore((prev) => {
+        const next = new Set(prev);
+        next.delete(estimate);
+        return next;
+      });
     }
-    return m;
-  }, [issues]);
+  }
 
-  const sortedKeys = [...grouped.keys()].sort((a, b) => a - b);
-  const total = issues?.length ?? 0;
+  const total = groups?.reduce((sum, g) => sum + g.issues.length, 0) ?? 0;
+  const anyHasMore = groups?.some((g) => g.hasNextPage) ?? false;
 
   return (
     <section className="references">
@@ -107,26 +118,27 @@ export function ReferenceScale() {
 
       {error && <p className="error">Error: {error}</p>}
       {loading && <p>Loading…</p>}
-      {!loading && issues !== null && total === 0 && (
+      {!loading && groups !== null && total === 0 && !anyHasMore && (
         <p className="muted">
           No estimated <code>{labelName}</code> issues in this team yet.
         </p>
       )}
-      {!loading && total > 0 && (
+      {!loading && groups !== null && groups.length > 0 && (
         <div className="estimate-groups">
-          {sortedKeys.map((estimate) => {
-            const list = grouped.get(estimate)!;
-            const limit = shownFor(estimate);
-            const visible = list.slice(0, limit);
-            const remaining = list.length - visible.length;
-            return (
-              <div key={estimate} className="estimate-group">
-                <h3 className="estimate-group-title">
-                  <span className="estimate-badge">{estimate}</span>
-                  <span className="muted">{list.length} project(s)</span>
-                </h3>
+          {groups.map((g) => (
+            <div key={g.estimate} className="estimate-group">
+              <h3 className="estimate-group-title">
+                <span className="estimate-badge">{g.estimate}</span>
+                <span className="muted">
+                  {g.issues.length}
+                  {g.hasNextPage ? "+" : ""} project(s)
+                </span>
+              </h3>
+              {g.issues.length === 0 && !g.hasNextPage ? (
+                <p className="muted">No projects estimated at this point.</p>
+              ) : (
                 <ul className="list">
-                  {visible.map((i) => (
+                  {g.issues.map((i) => (
                     <li key={i.id}>
                       <div className="row row-static">
                         <span className="ref-main">
@@ -150,22 +162,30 @@ export function ReferenceScale() {
                     </li>
                   ))}
                 </ul>
-                {remaining > 0 && (
-                  <p className="show-more-row">
-                    <button
-                      className="secondary-button"
-                      onClick={() => showMore(estimate)}
-                    >
-                      Show {Math.min(PAGE_SIZE, remaining)} more
-                      <span className="muted"> ({remaining} remaining)</span>
-                    </button>
-                  </p>
-                )}
-              </div>
-            );
-          })}
+              )}
+              {g.hasNextPage && (
+                <p className="show-more-row">
+                  <button
+                    className="secondary-button"
+                    onClick={() => loadMore(g.estimate)}
+                    disabled={loadingMore.has(g.estimate)}
+                  >
+                    {loadingMore.has(g.estimate) ? "Loading…" : "Show more"}
+                  </button>
+                </p>
+              )}
+            </div>
+          ))}
         </div>
       )}
     </section>
+  );
+}
+
+function sortIssues<T extends { project: { name: string } | null; identifier: string }>(
+  list: T[],
+): T[] {
+  return [...list].sort((a, b) =>
+    (a.project?.name ?? a.identifier).localeCompare(b.project?.name ?? b.identifier),
   );
 }

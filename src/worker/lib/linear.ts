@@ -330,27 +330,35 @@ export interface StoryPointIssueRefDTO {
   project: { id: string; name: string; url: string } | null;
 }
 
+export interface StoryPointReferencePageDTO {
+  issues: StoryPointIssueRefDTO[];
+  endCursor: string | null;
+  hasNextPage: boolean;
+}
+
 /**
- * Pull every StoryPoint-labelled Issue in the given team that has an estimate
- * set, so the UI can group them by estimate as a calibration reference.
+ * Fetch one page of estimated StoryPoint-labelled Issues with a specific
+ * estimate value, used to populate one card in the Reference Scale page.
  */
-export async function listEstimatedStoryPointIssues(
+export async function listStoryPointIssuesByEstimate(
   accessToken: string,
   teamId: string,
   labelName: string,
-): Promise<StoryPointIssueRefDTO[]> {
+  estimate: number,
+  after: string | null,
+  first: number,
+): Promise<StoryPointReferencePageDTO> {
   const client = clientFor(accessToken);
   const conn = await client.issues({
-    first: 250,
+    first,
+    ...(after ? { after } : {}),
     filter: {
       team: { id: { eq: teamId } },
       labels: { some: { name: { eq: labelName } } },
-      estimate: { null: false },
+      estimate: { eq: estimate },
     },
   });
   const issues = conn.nodes;
-  if (issues.length === 0) return [];
-
   const projectIds = [
     ...new Set(issues.map((i) => i.projectId).filter((id): id is string => !!id)),
   ];
@@ -364,17 +372,20 @@ export async function listEstimatedStoryPointIssues(
       projectMap.set(p.id, { id: p.id, name: p.name, url: p.url });
     }
   }
-
-  return issues
-    .filter((i): i is typeof i & { estimate: number } => typeof i.estimate === "number")
-    .map((i) => ({
-      id: i.id,
-      identifier: i.identifier,
-      title: i.title,
-      url: i.url,
-      estimate: i.estimate,
-      project: i.projectId ? projectMap.get(i.projectId) ?? null : null,
-    }));
+  return {
+    issues: issues
+      .filter((i): i is typeof i & { estimate: number } => typeof i.estimate === "number")
+      .map((i) => ({
+        id: i.id,
+        identifier: i.identifier,
+        title: i.title,
+        url: i.url,
+        estimate: i.estimate,
+        project: i.projectId ? projectMap.get(i.projectId) ?? null : null,
+      })),
+    endCursor: conn.pageInfo.endCursor ?? null,
+    hasNextPage: conn.pageInfo.hasNextPage,
+  };
 }
 
 export async function findStoryPointIssue(
