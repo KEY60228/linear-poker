@@ -727,19 +727,18 @@ button:disabled {
 }
 
 .ref-main {
-  flex: 1;
+  flex: 1 1 0;
   min-width: 0;
+  display: block;
   overflow: hidden;
 }
 
 .ref-main a,
 .ref-main em {
-  display: inline-block;
-  max-width: 100%;
+  display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  vertical-align: middle;
   color: inherit;
 }
 
