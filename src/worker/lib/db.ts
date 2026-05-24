@@ -258,3 +258,172 @@ export async function listSessionItems(
     };
   });
 }
+
+// ---- Participant groups -----------------------------------------------
+
+export interface ParticipantGroupRow {
+  id: string;
+  team_id: string;
+  name: string;
+  created_by: string;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface ParticipantGroupMemberRow {
+  group_id: string;
+  user_id: string;
+  display_name: string;
+  email: string;
+  added_at: number;
+}
+
+export interface ParticipantGroupDTO {
+  id: string;
+  teamId: string;
+  name: string;
+  createdBy: string;
+  createdAt: number;
+  updatedAt: number;
+  members: { userId: string; displayName: string; email: string }[];
+}
+
+export async function listParticipantGroups(
+  db: D1Database,
+  teamId: string,
+): Promise<ParticipantGroupDTO[]> {
+  const groupsRes = await db
+    .prepare(
+      "SELECT * FROM participant_groups WHERE team_id = ? ORDER BY name COLLATE NOCASE ASC",
+    )
+    .bind(teamId)
+    .all<ParticipantGroupRow>();
+  const groups = groupsRes.results ?? [];
+  if (groups.length === 0) return [];
+
+  const ids = groups.map((g) => g.id);
+  const ph = ids.map(() => "?").join(",");
+  const membersRes = await db
+    .prepare(
+      `SELECT * FROM participant_group_members WHERE group_id IN (${ph}) ORDER BY added_at ASC`,
+    )
+    .bind(...ids)
+    .all<ParticipantGroupMemberRow>();
+  const membersByGroup = new Map<string, ParticipantGroupMemberRow[]>();
+  for (const m of membersRes.results ?? []) {
+    const arr = membersByGroup.get(m.group_id) ?? [];
+    arr.push(m);
+    membersByGroup.set(m.group_id, arr);
+  }
+
+  return groups.map((g) => ({
+    id: g.id,
+    teamId: g.team_id,
+    name: g.name,
+    createdBy: g.created_by,
+    createdAt: g.created_at,
+    updatedAt: g.updated_at,
+    members: (membersByGroup.get(g.id) ?? []).map((m) => ({
+      userId: m.user_id,
+      displayName: m.display_name,
+      email: m.email,
+    })),
+  }));
+}
+
+export async function getParticipantGroup(
+  db: D1Database,
+  id: string,
+): Promise<ParticipantGroupDTO | null> {
+  const row = await db
+    .prepare("SELECT * FROM participant_groups WHERE id = ?")
+    .bind(id)
+    .first<ParticipantGroupRow>();
+  if (!row) return null;
+  const membersRes = await db
+    .prepare(
+      "SELECT * FROM participant_group_members WHERE group_id = ? ORDER BY added_at ASC",
+    )
+    .bind(id)
+    .all<ParticipantGroupMemberRow>();
+  return {
+    id: row.id,
+    teamId: row.team_id,
+    name: row.name,
+    createdBy: row.created_by,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    members: (membersRes.results ?? []).map((m) => ({
+      userId: m.user_id,
+      displayName: m.display_name,
+      email: m.email,
+    })),
+  };
+}
+
+export async function createParticipantGroup(
+  db: D1Database,
+  input: {
+    id: string;
+    teamId: string;
+    name: string;
+    createdBy: string;
+    members: { userId: string; displayName: string; email: string }[];
+  },
+): Promise<void> {
+  const now = Date.now();
+  const statements: D1PreparedStatement[] = [
+    db
+      .prepare(
+        "INSERT INTO participant_groups (id, team_id, name, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+      )
+      .bind(input.id, input.teamId, input.name, input.createdBy, now, now),
+  ];
+  for (const m of input.members) {
+    statements.push(
+      db
+        .prepare(
+          "INSERT INTO participant_group_members (group_id, user_id, display_name, email, added_at) VALUES (?, ?, ?, ?, ?)",
+        )
+        .bind(input.id, m.userId, m.displayName, m.email, now),
+    );
+  }
+  await db.batch(statements);
+}
+
+export async function updateParticipantGroup(
+  db: D1Database,
+  id: string,
+  input: {
+    name: string;
+    members: { userId: string; displayName: string; email: string }[];
+  },
+): Promise<void> {
+  const now = Date.now();
+  const statements: D1PreparedStatement[] = [
+    db
+      .prepare("UPDATE participant_groups SET name = ?, updated_at = ? WHERE id = ?")
+      .bind(input.name, now, id),
+    db.prepare("DELETE FROM participant_group_members WHERE group_id = ?").bind(id),
+  ];
+  for (const m of input.members) {
+    statements.push(
+      db
+        .prepare(
+          "INSERT INTO participant_group_members (group_id, user_id, display_name, email, added_at) VALUES (?, ?, ?, ?, ?)",
+        )
+        .bind(id, m.userId, m.displayName, m.email, now),
+    );
+  }
+  await db.batch(statements);
+}
+
+export async function deleteParticipantGroup(
+  db: D1Database,
+  id: string,
+): Promise<void> {
+  await db
+    .prepare("DELETE FROM participant_groups WHERE id = ?")
+    .bind(id)
+    .run();
+}

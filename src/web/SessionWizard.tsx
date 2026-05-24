@@ -3,6 +3,7 @@ import {
   api,
   apiErrorBody,
   apiErrorCode,
+  type ParticipantGroup,
   type Project,
   type StoryPointIssue,
   type Team,
@@ -450,10 +451,11 @@ function ParticipantsStep({
   const [members, setMembers] = useState<User[] | null>(null);
   const [searchResults, setSearchResults] = useState<User[] | null>(null);
   const [query, setQuery] = useState("");
-  const [selected, setSelected] = useState<Map<string, User>>(new Map());
+  const [selected, setSelected] = useState<Map<string, { id: string; displayName: string; email: string }>>(new Map());
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [existingSessionId, setExistingSessionId] = useState<string | null>(null);
+  const [groups, setGroups] = useState<ParticipantGroup[] | null>(null);
 
   useEffect(() => {
     api
@@ -466,7 +468,7 @@ function ParticipantsStep({
           if (me) {
             setSelected((prev) => {
               const next = new Map(prev);
-              next.set(me.id, me);
+              next.set(me.id, { id: me.id, displayName: me.displayName, email: me.email });
               return next;
             });
           }
@@ -474,6 +476,26 @@ function ParticipantsStep({
       })
       .catch((e) => setError(String(e)));
   }, [team.id, viewer?.id]);
+
+  useEffect(() => {
+    api.listGroups(team.id).then(setGroups).catch(() => undefined);
+  }, [team.id]);
+
+  function applyGroup(g: ParticipantGroup) {
+    setSelected((prev) => {
+      const next = new Map(prev);
+      for (const m of g.members) {
+        if (!next.has(m.userId)) {
+          next.set(m.userId, {
+            id: m.userId,
+            displayName: m.displayName,
+            email: m.email,
+          });
+        }
+      }
+      return next;
+    });
+  }
 
   useEffect(() => {
     const q = query.trim();
@@ -507,7 +529,15 @@ function ParticipantsStep({
     setSelected((prev) => {
       const next = new Map(prev);
       if (next.has(u.id)) next.delete(u.id);
-      else next.set(u.id, u);
+      else next.set(u.id, { id: u.id, displayName: u.displayName, email: u.email });
+      return next;
+    });
+  }
+
+  function removeById(id: string) {
+    setSelected((prev) => {
+      const next = new Map(prev);
+      next.delete(id);
       return next;
     });
   }
@@ -554,6 +584,22 @@ function ParticipantsStep({
         onChange={(e) => setQuery(e.target.value)}
       />
 
+      {groups && groups.length > 0 && (
+        <div className="apply-groups">
+          <span className="muted">Apply group:</span>
+          {groups.map((g) => (
+            <button
+              key={g.id}
+              className="chip-button"
+              onClick={() => applyGroup(g)}
+              title={`Add ${g.members.length} member(s)`}
+            >
+              + {g.name} ({g.members.length})
+            </button>
+          ))}
+        </div>
+      )}
+
       {selected.size > 0 && (
         <div className="chips">
           {Array.from(selected.values()).map((u) => (
@@ -561,7 +607,7 @@ function ParticipantsStep({
               {u.displayName}
               <button
                 aria-label={`Remove ${u.displayName}`}
-                onClick={() => toggle(u)}
+                onClick={() => removeById(u.id)}
               >
                 ×
               </button>

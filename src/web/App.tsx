@@ -4,18 +4,21 @@ import { SessionWizard } from "./SessionWizard";
 import { SessionView } from "./SessionView";
 import { SessionList } from "./SessionList";
 import { ReferenceScale } from "./ReferenceScale";
+import { Groups } from "./Groups";
 
 type Route =
   | { kind: "list" }
   | { kind: "new" }
   | { kind: "session"; id: string }
-  | { kind: "references" };
+  | { kind: "references" }
+  | { kind: "groups" };
 
 function readRoute(): Route {
   const hash = window.location.hash;
   if (hash === "" || hash === "#" || hash === "#/") return { kind: "list" };
   if (hash === "#/new") return { kind: "new" };
   if (hash === "#/references") return { kind: "references" };
+  if (hash === "#/groups") return { kind: "groups" };
   const m = hash.match(/^#\/sessions\/([A-Za-z0-9_-]+)$/);
   if (m && m[1]) return { kind: "session", id: m[1] };
   return { kind: "list" };
@@ -94,6 +97,7 @@ export function App() {
         <SessionView sessionId={route.id} viewer={viewer} />
       )}
       {status?.authenticated && route.kind === "references" && <ReferenceScale />}
+      {status?.authenticated && route.kind === "groups" && <Groups />}
     </main>
   );
 }
