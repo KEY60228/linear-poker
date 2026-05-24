@@ -88,6 +88,22 @@ export type StoryPointReferencePage = {
   hasNextPage: boolean;
 };
 
+export type ParticipantGroupMember = {
+  userId: string;
+  displayName: string;
+  email: string;
+};
+
+export type ParticipantGroup = {
+  id: string;
+  teamId: string;
+  name: string;
+  createdBy: string;
+  createdAt: number;
+  updatedAt: number;
+  members: ParticipantGroupMember[];
+};
+
 export type ParticipantState = {
   userId: string;
   displayName: string;
@@ -160,6 +176,19 @@ async function jsonGet<T>(path: string): Promise<T> {
 async function jsonPost<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(path, {
     method: "POST",
+    credentials: "same-origin",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body ?? {}),
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, res.statusText, await readErrorBody(res));
+  }
+  return (await res.json()) as T;
+}
+
+async function jsonPatch<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(path, {
+    method: "PATCH",
     credentials: "same-origin",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body ?? {}),
@@ -255,6 +284,22 @@ export const api = {
       `/api/sessions/${encodeURIComponent(sessionId)}/unfinalize`,
       {},
     ),
+  listGroups: (teamId: string) =>
+    jsonGet<{ groups: ParticipantGroup[] }>(
+      `/api/teams/${encodeURIComponent(teamId)}/groups`,
+    ).then((r) => r.groups),
+  createGroup: (teamId: string, input: { name: string; userIds: string[] }) =>
+    jsonPost<{ group: ParticipantGroup }>(
+      `/api/teams/${encodeURIComponent(teamId)}/groups`,
+      input,
+    ).then((r) => r.group),
+  updateGroup: (id: string, input: { name: string; userIds: string[] }) =>
+    jsonPatch<{ group: ParticipantGroup }>(
+      `/api/groups/${encodeURIComponent(id)}`,
+      input,
+    ).then((r) => r.group),
+  deleteGroup: (id: string) =>
+    jsonDelete<{ ok: true }>(`/api/groups/${encodeURIComponent(id)}`),
   logout: () =>
     fetch("/auth/logout", { method: "POST", credentials: "same-origin" }),
 };

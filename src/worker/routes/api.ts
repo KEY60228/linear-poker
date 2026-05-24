@@ -21,6 +21,13 @@ import { randomId } from "../lib/crypto";
 import type { CreateSessionInput } from "../do/session";
 import { listSessionItems } from "../lib/db";
 import type { SessionStatus } from "../lib/db";
+import {
+  createParticipantGroup,
+  deleteParticipantGroup,
+  getParticipantGroup,
+  listParticipantGroups,
+  updateParticipantGroup,
+} from "../lib/db";
 
 const api = new Hono<HonoEnv>();
 
@@ -350,6 +357,84 @@ api.post("/sessions/:id/revote", async (c) => {
     if (msg === "session_not_found") return c.json({ error: "not_found" }, 404);
     throw e;
   }
+  return c.json({ ok: true });
+});
+
+// ---------- Participant groups ----------
+
+api.get("/teams/:teamId/groups", async (c) => {
+  const teamId = c.req.param("teamId");
+  const groups = await listParticipantGroups(c.env.DB, teamId);
+  return c.json({ groups });
+});
+
+api.post("/teams/:teamId/groups", async (c) => {
+  const teamId = c.req.param("teamId");
+  const body = await c.req.json<{ name: string; userIds: string[] }>();
+  const name = (body.name ?? "").trim();
+  const userIds = Array.isArray(body.userIds) ? body.userIds : [];
+  if (!name) return c.json({ error: "missing_name" }, 400);
+  if (userIds.length === 0) return c.json({ error: "no_members" }, 400);
+
+  const users = await listUsersByIds(token(c), userIds);
+  if (users.length !== userIds.length) {
+    return c.json({ error: "unknown_members" }, 400);
+  }
+
+  const id = randomId(16);
+  await createParticipantGroup(c.env.DB, {
+    id,
+    teamId,
+    name,
+    createdBy: viewerId(c),
+    members: users.map((u) => ({
+      userId: u.id,
+      displayName: u.displayName,
+      email: u.email,
+    })),
+  });
+  const created = await getParticipantGroup(c.env.DB, id);
+  return c.json({ group: created }, 201);
+});
+
+api.get("/groups/:id", async (c) => {
+  const group = await getParticipantGroup(c.env.DB, c.req.param("id"));
+  if (!group) return c.json({ error: "not_found" }, 404);
+  return c.json({ group });
+});
+
+api.patch("/groups/:id", async (c) => {
+  const id = c.req.param("id");
+  const body = await c.req.json<{ name: string; userIds: string[] }>();
+  const name = (body.name ?? "").trim();
+  const userIds = Array.isArray(body.userIds) ? body.userIds : [];
+  if (!name) return c.json({ error: "missing_name" }, 400);
+  if (userIds.length === 0) return c.json({ error: "no_members" }, 400);
+
+  const existing = await getParticipantGroup(c.env.DB, id);
+  if (!existing) return c.json({ error: "not_found" }, 404);
+
+  const users = await listUsersByIds(token(c), userIds);
+  if (users.length !== userIds.length) {
+    return c.json({ error: "unknown_members" }, 400);
+  }
+  await updateParticipantGroup(c.env.DB, id, {
+    name,
+    members: users.map((u) => ({
+      userId: u.id,
+      displayName: u.displayName,
+      email: u.email,
+    })),
+  });
+  const updated = await getParticipantGroup(c.env.DB, id);
+  return c.json({ group: updated });
+});
+
+api.delete("/groups/:id", async (c) => {
+  const id = c.req.param("id");
+  const existing = await getParticipantGroup(c.env.DB, id);
+  if (!existing) return c.json({ error: "not_found" }, 404);
+  await deleteParticipantGroup(c.env.DB, id);
   return c.json({ ok: true });
 });
 

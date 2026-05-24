@@ -50,6 +50,9 @@ export function SessionList() {
           </button>
         </div>
         <div className="header-actions">
+          <a className="secondary-link" href="#/groups">
+            Groups
+          </a>
           <a className="secondary-link" href="#/references">
             Reference scale
           </a>
