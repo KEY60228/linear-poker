@@ -8,6 +8,7 @@ import {
   getTeamSummary,
   getViewer,
   listBacklogProjects,
+  listStoryPointIssuesByEstimate,
   listTeamMembers,
   listTeams,
   listUsersByIds,
@@ -68,6 +69,56 @@ api.get("/users", async (c) => {
   const q = (c.req.query("q") ?? "").trim();
   if (q.length < 2) return c.json({ users: [] });
   return c.json({ users: await searchUsers(token(c), q) });
+});
+
+const REFERENCE_PAGE_SIZE = 10;
+
+api.get("/teams/:teamId/storypoint-references", async (c) => {
+  const teamId = c.req.param("teamId");
+  const label = c.env.STORY_POINT_LABEL_NAME;
+  const accessToken = token(c);
+
+  // Discover the team's scale options first — we paginate one estimate value
+  // at a time so each card on the page can independently page through its
+  // own bucket of issues.
+  const team = await getTeamSummary(accessToken, teamId);
+  const estimates = team.scale.options
+    .map((o) => Number(o.value))
+    .filter((n) => !Number.isNaN(n));
+
+  const groups = await Promise.all(
+    estimates.map(async (estimate) => {
+      const page = await listStoryPointIssuesByEstimate(
+        accessToken,
+        teamId,
+        label,
+        estimate,
+        null,
+        REFERENCE_PAGE_SIZE,
+      );
+      return { estimate, ...page };
+    }),
+  );
+
+  return c.json({ groups, labelName: label });
+});
+
+api.get("/teams/:teamId/storypoint-references/:estimate", async (c) => {
+  const teamId = c.req.param("teamId");
+  const estimate = Number(c.req.param("estimate"));
+  if (Number.isNaN(estimate)) {
+    return c.json({ error: "invalid_estimate" }, 400);
+  }
+  const after = c.req.query("after") ?? null;
+  const page = await listStoryPointIssuesByEstimate(
+    token(c),
+    teamId,
+    c.env.STORY_POINT_LABEL_NAME,
+    estimate,
+    after,
+    REFERENCE_PAGE_SIZE,
+  );
+  return c.json(page);
 });
 
 api.get("/projects/:projectId/storypoint-issue", async (c) => {

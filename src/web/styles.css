@@ -1,3 +1,9 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
 :root {
   color-scheme: light dark;
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -450,6 +456,7 @@ button:disabled {
   align-items: center;
   gap: 0.5rem;
   padding: 0.5rem 0.9rem;
+  min-width: 0;
 }
 
 .row-static + .row-static {
@@ -647,4 +654,110 @@ button:disabled {
   align-items: center;
   flex-wrap: wrap;
   margin-top: 0.15rem;
+}
+
+/* --- Reference scale --- */
+
+.header-actions {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.secondary-link {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 0.875rem;
+}
+
+.secondary-link:hover {
+  text-decoration: underline;
+}
+
+.references {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.references-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.references-header h2 {
+  margin: 0 0 0.25rem;
+}
+
+.team-select {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.875rem;
+}
+
+.team-select select {
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+.estimate-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.estimate-group-title {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0 0 0.5rem;
+}
+
+.estimate-badge {
+  display: inline-block;
+  min-width: 2.5rem;
+  text-align: center;
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  background: var(--accent);
+  color: white;
+  font-weight: 700;
+}
+
+.ref-main {
+  flex: 1 1 0;
+  min-width: 0;
+  display: block;
+  overflow: hidden;
+}
+
+.ref-main a,
+.ref-main em {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: inherit;
+}
+
+.ref-issue {
+  text-decoration: none;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.ref-issue:hover {
+  text-decoration: underline;
+}
+
+.show-more-row {
+  margin: 0.5rem 0 0;
 }

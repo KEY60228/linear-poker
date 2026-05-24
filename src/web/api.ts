@@ -66,6 +66,28 @@ export type SessionListItem = {
 export type SessionListScope = "mine" | "all";
 export type SessionListStatusFilter = SessionStatus | "all";
 
+export type StoryPointReference = {
+  id: string;
+  identifier: string;
+  title: string;
+  url: string;
+  estimate: number;
+  project: { id: string; name: string; url: string } | null;
+};
+
+export type StoryPointReferenceGroup = {
+  estimate: number;
+  issues: StoryPointReference[];
+  endCursor: string | null;
+  hasNextPage: boolean;
+};
+
+export type StoryPointReferencePage = {
+  issues: StoryPointReference[];
+  endCursor: string | null;
+  hasNextPage: boolean;
+};
+
 export type ParticipantState = {
   userId: string;
   displayName: string;
@@ -167,6 +189,14 @@ export const api = {
   storyPointIssue: (projectId: string) =>
     jsonGet<{ issue: StoryPointIssue | null; labelName: string }>(
       `/api/projects/${encodeURIComponent(projectId)}/storypoint-issue`,
+    ),
+  storyPointReferences: (teamId: string) =>
+    jsonGet<{ groups: StoryPointReferenceGroup[]; labelName: string }>(
+      `/api/teams/${encodeURIComponent(teamId)}/storypoint-references`,
+    ),
+  storyPointReferencesMore: (teamId: string, estimate: number, after: string) =>
+    jsonGet<StoryPointReferencePage>(
+      `/api/teams/${encodeURIComponent(teamId)}/storypoint-references/${estimate}?after=${encodeURIComponent(after)}`,
     ),
   teamMembers: (teamId: string) =>
     jsonGet<{ users: User[] }>(

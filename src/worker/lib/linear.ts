@@ -321,6 +321,73 @@ function buildScaleOptions(
   return filtered.map((n) => ({ value: String(n), label: String(n) }));
 }
 
+export interface StoryPointIssueRefDTO {
+  id: string;
+  identifier: string;
+  title: string;
+  url: string;
+  estimate: number;
+  project: { id: string; name: string; url: string } | null;
+}
+
+export interface StoryPointReferencePageDTO {
+  issues: StoryPointIssueRefDTO[];
+  endCursor: string | null;
+  hasNextPage: boolean;
+}
+
+/**
+ * Fetch one page of estimated StoryPoint-labelled Issues with a specific
+ * estimate value, used to populate one card in the Reference Scale page.
+ */
+export async function listStoryPointIssuesByEstimate(
+  accessToken: string,
+  teamId: string,
+  labelName: string,
+  estimate: number,
+  after: string | null,
+  first: number,
+): Promise<StoryPointReferencePageDTO> {
+  const client = clientFor(accessToken);
+  const conn = await client.issues({
+    first,
+    ...(after ? { after } : {}),
+    filter: {
+      team: { id: { eq: teamId } },
+      labels: { some: { name: { eq: labelName } } },
+      estimate: { eq: estimate },
+    },
+  });
+  const issues = conn.nodes;
+  const projectIds = [
+    ...new Set(issues.map((i) => i.projectId).filter((id): id is string => !!id)),
+  ];
+  const projectMap = new Map<string, { id: string; name: string; url: string }>();
+  if (projectIds.length > 0) {
+    const projConn = await client.projects({
+      first: Math.min(250, projectIds.length),
+      filter: { id: { in: projectIds } },
+    });
+    for (const p of projConn.nodes) {
+      projectMap.set(p.id, { id: p.id, name: p.name, url: p.url });
+    }
+  }
+  return {
+    issues: issues
+      .filter((i): i is typeof i & { estimate: number } => typeof i.estimate === "number")
+      .map((i) => ({
+        id: i.id,
+        identifier: i.identifier,
+        title: i.title,
+        url: i.url,
+        estimate: i.estimate,
+        project: i.projectId ? projectMap.get(i.projectId) ?? null : null,
+      })),
+    endCursor: conn.pageInfo.endCursor ?? null,
+    hasNextPage: conn.pageInfo.hasNextPage,
+  };
+}
+
 export async function findStoryPointIssue(
   accessToken: string,
   projectId: string,

@@ -49,9 +49,14 @@ export function SessionList() {
             Workspace
           </button>
         </div>
-        <a className="primary" href="#/new">
-          + New session
-        </a>
+        <div className="header-actions">
+          <a className="secondary-link" href="#/references">
+            Reference scale
+          </a>
+          <a className="primary" href="#/new">
+            + New session
+          </a>
+        </div>
       </header>
 
       <nav className="tabs" role="tablist" aria-label="Status">
