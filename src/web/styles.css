@@ -450,6 +450,7 @@ button:disabled {
   align-items: center;
   gap: 0.5rem;
   padding: 0.5rem 0.9rem;
+  min-width: 0;
 }
 
 .row-static + .row-static {
@@ -729,16 +730,23 @@ button:disabled {
   flex: 1;
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.ref-main a {
+.ref-main a,
+.ref-main em {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
   color: inherit;
 }
 
 .ref-issue {
   text-decoration: none;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .ref-issue:hover {
