@@ -519,10 +519,10 @@ function ParticipantsStep({
   }, [query]);
 
   const candidates = useMemo<User[]>(() => {
-    const base = members ?? [];
-    if (searchResults === null) return base;
-    const seen = new Set(base.map((u) => u.id));
-    return [...base, ...searchResults.filter((u) => !seen.has(u.id))];
+    // While the user is searching, show only the search results — otherwise a
+    // match that's already a team member looks like the search is ignored.
+    if (searchResults !== null) return searchResults;
+    return members ?? [];
   }, [members, searchResults]);
 
   function toggle(u: User) {

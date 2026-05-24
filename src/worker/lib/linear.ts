@@ -179,17 +179,25 @@ export async function searchUsers(
   accessToken: string,
   query: string,
 ): Promise<UserDTO[]> {
-  const conn = await clientFor(accessToken).users({
-    first: 25,
-    filter: {
-      or: [
-        { displayName: { containsIgnoreCase: query } },
-        { name: { containsIgnoreCase: query } },
-        { email: { containsIgnoreCase: query } },
-      ],
-    },
-  });
-  return conn.nodes.map(toUserDTO);
+  const client = clientFor(accessToken);
+  // Run the three field searches in parallel and merge by user id. Linear's
+  // `or` filter with mixed fields has been unreliable in practice; explicit
+  // parallel queries make the semantics obvious and let us cap each branch.
+  const branches = await Promise.all([
+    client.users({ first: 25, filter: { displayName: { containsIgnoreCase: query } } }),
+    client.users({ first: 25, filter: { name: { containsIgnoreCase: query } } }),
+    client.users({ first: 25, filter: { email: { containsIgnoreCase: query } } }),
+  ]);
+  const seen = new Set<string>();
+  const merged: UserDTO[] = [];
+  for (const branch of branches) {
+    for (const node of branch.nodes) {
+      if (seen.has(node.id)) continue;
+      seen.add(node.id);
+      merged.push(toUserDTO(node));
+    }
+  }
+  return merged.slice(0, 25);
 }
 
 function toUserDTO(u: {

@@ -513,10 +513,11 @@ function ParticipantManager({
   const [results, setResults] = useState<User[] | null>(null);
   const [members, setMembers] = useState<User[] | null>(null);
   const [busy, setBusy] = useState(false);
+  const [managerError, setManagerError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!showPicker) return;
-    api.teamMembers(teamId).then(setMembers).catch(() => undefined);
+    api.teamMembers(teamId).then(setMembers).catch((e) => setManagerError(String(e)));
   }, [showPicker, teamId]);
 
   useEffect(() => {
@@ -527,7 +528,10 @@ function ParticipantManager({
     }
     let cancelled = false;
     const t = setTimeout(() => {
-      api.searchUsers(q).then((u) => !cancelled && setResults(u)).catch(() => undefined);
+      api
+        .searchUsers(q)
+        .then((u) => !cancelled && setResults(u))
+        .catch((e) => !cancelled && setManagerError(String(e)));
     }, 250);
     return () => {
       cancelled = true;
@@ -536,11 +540,7 @@ function ParticipantManager({
   }, [query]);
 
   const partIds = new Set(participants.map((p) => p.userId));
-  const base = members ?? [];
-  const seen = new Set(base.map((u) => u.id));
-  const candidates: User[] = results
-    ? [...base, ...results.filter((u) => !seen.has(u.id))]
-    : base;
+  const candidates: User[] = results !== null ? results : members ?? [];
   const candidatesToAdd = candidates.filter((u) => !partIds.has(u.id));
 
   async function add(userId: string) {
@@ -568,6 +568,7 @@ function ParticipantManager({
       <summary>Manage participants</summary>
       <div className="manage-body">
         <p className="muted">Remove anyone here, or search to add more.</p>
+        {managerError && <p className="error">Error: {managerError}</p>}
         <ul className="list">
           {participants.map((p) => (
             <li key={p.userId} className="row-static">

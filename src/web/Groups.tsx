@@ -176,7 +176,7 @@ function GroupEditor({
       api
         .searchUsers(q)
         .then((u) => !cancelled && setSearchResults(u))
-        .catch(() => undefined);
+        .catch((e) => !cancelled && setError(String(e)));
     }, 250);
     return () => {
       cancelled = true;
@@ -185,10 +185,8 @@ function GroupEditor({
   }, [query]);
 
   const candidates = useMemo<User[]>(() => {
-    const base = members ?? [];
-    if (searchResults === null) return base;
-    const seen = new Set(base.map((u) => u.id));
-    return [...base, ...searchResults.filter((u) => !seen.has(u.id))];
+    if (searchResults !== null) return searchResults;
+    return members ?? [];
   }, [members, searchResults]);
 
   function toggle(u: User) {
