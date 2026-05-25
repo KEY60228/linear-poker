@@ -522,14 +522,14 @@ function ParticipantManager({
 
   useEffect(() => {
     const q = query.trim();
-    if (q.length < 2) {
+    if (q.length < 1) {
       setResults(null);
       return;
     }
     let cancelled = false;
     const t = setTimeout(() => {
       api
-        .searchUsers(q)
+        .searchTeamMembers(teamId, q)
         .then((u) => !cancelled && setResults(u))
         .catch((e) => !cancelled && setManagerError(String(e)));
     }, 250);
@@ -581,7 +581,7 @@ function ParticipantManager({
         <input
           className="search"
           type="search"
-          placeholder="Search workspace users…"
+          placeholder="Search team members…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />

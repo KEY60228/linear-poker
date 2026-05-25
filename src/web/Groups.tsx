@@ -167,14 +167,14 @@ function GroupEditor({
 
   useEffect(() => {
     const q = query.trim();
-    if (q.length < 2) {
+    if (q.length < 1) {
       setSearchResults(null);
       return;
     }
     let cancelled = false;
     const t = setTimeout(() => {
       api
-        .searchUsers(q)
+        .searchTeamMembers(teamId, q)
         .then((u) => !cancelled && setSearchResults(u))
         .catch((e) => !cancelled && setError(String(e)));
     }, 250);
@@ -261,7 +261,7 @@ function GroupEditor({
       <input
         className="search"
         type="search"
-        placeholder="Search team members or workspace users…"
+        placeholder="Search team members…"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
       />

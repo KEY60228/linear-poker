@@ -175,18 +175,19 @@ export async function listUsersByIds(
   return conn.nodes.map(toUserDTO);
 }
 
-export async function searchUsers(
+export async function searchUsersInTeam(
   accessToken: string,
+  teamId: string,
   query: string,
 ): Promise<UserDTO[]> {
-  const client = clientFor(accessToken);
-  // Run the three field searches in parallel and merge by user id. Linear's
-  // `or` filter with mixed fields has been unreliable in practice; explicit
-  // parallel queries make the semantics obvious and let us cap each branch.
+  const team = await clientFor(accessToken).team(teamId);
+  // Three parallel members() calls with explicit per-field filters and a
+  // dedup pass by user id — same shape as the previous workspace search,
+  // just scoped to the chosen team.
   const branches = await Promise.all([
-    client.users({ first: 25, filter: { displayName: { containsIgnoreCase: query } } }),
-    client.users({ first: 25, filter: { name: { containsIgnoreCase: query } } }),
-    client.users({ first: 25, filter: { email: { containsIgnoreCase: query } } }),
+    team.members({ first: 25, filter: { displayName: { containsIgnoreCase: query } } }),
+    team.members({ first: 25, filter: { name: { containsIgnoreCase: query } } }),
+    team.members({ first: 25, filter: { email: { containsIgnoreCase: query } } }),
   ]);
   const seen = new Set<string>();
   const merged: UserDTO[] = [];
