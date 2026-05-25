@@ -175,21 +175,30 @@ export async function listUsersByIds(
   return conn.nodes.map(toUserDTO);
 }
 
-export async function searchUsers(
+export async function searchUsersInTeam(
   accessToken: string,
+  teamId: string,
   query: string,
 ): Promise<UserDTO[]> {
-  const conn = await clientFor(accessToken).users({
-    first: 25,
-    filter: {
-      or: [
-        { displayName: { containsIgnoreCase: query } },
-        { name: { containsIgnoreCase: query } },
-        { email: { containsIgnoreCase: query } },
-      ],
-    },
-  });
-  return conn.nodes.map(toUserDTO);
+  const team = await clientFor(accessToken).team(teamId);
+  // Three parallel members() calls with explicit per-field filters and a
+  // dedup pass by user id — same shape as the previous workspace search,
+  // just scoped to the chosen team.
+  const branches = await Promise.all([
+    team.members({ first: 25, filter: { displayName: { containsIgnoreCase: query } } }),
+    team.members({ first: 25, filter: { name: { containsIgnoreCase: query } } }),
+    team.members({ first: 25, filter: { email: { containsIgnoreCase: query } } }),
+  ]);
+  const seen = new Set<string>();
+  const merged: UserDTO[] = [];
+  for (const branch of branches) {
+    for (const node of branch.nodes) {
+      if (seen.has(node.id)) continue;
+      seen.add(node.id);
+      merged.push(toUserDTO(node));
+    }
+  }
+  return merged.slice(0, 25);
 }
 
 function toUserDTO(u: {

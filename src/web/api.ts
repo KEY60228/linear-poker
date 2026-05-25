@@ -231,10 +231,10 @@ export const api = {
     jsonGet<{ users: User[] }>(
       `/api/teams/${encodeURIComponent(teamId)}/members`,
     ).then((r) => r.users),
-  searchUsers: (q: string) =>
-    jsonGet<{ users: User[] }>(`/api/users?q=${encodeURIComponent(q)}`).then(
-      (r) => r.users,
-    ),
+  searchTeamMembers: (teamId: string, q: string) =>
+    jsonGet<{ users: User[] }>(
+      `/api/teams/${encodeURIComponent(teamId)}/members?q=${encodeURIComponent(q)}`,
+    ).then((r) => r.users),
   listSessions: (scope: SessionListScope, status: SessionListStatusFilter) => {
     const params = new URLSearchParams({ scope });
     if (status !== "all") params.set("status", status);

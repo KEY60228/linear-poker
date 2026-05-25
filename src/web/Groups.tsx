@@ -167,16 +167,16 @@ function GroupEditor({
 
   useEffect(() => {
     const q = query.trim();
-    if (q.length < 2) {
+    if (q.length < 1) {
       setSearchResults(null);
       return;
     }
     let cancelled = false;
     const t = setTimeout(() => {
       api
-        .searchUsers(q)
+        .searchTeamMembers(teamId, q)
         .then((u) => !cancelled && setSearchResults(u))
-        .catch(() => undefined);
+        .catch((e) => !cancelled && setError(String(e)));
     }, 250);
     return () => {
       cancelled = true;
@@ -185,10 +185,8 @@ function GroupEditor({
   }, [query]);
 
   const candidates = useMemo<User[]>(() => {
-    const base = members ?? [];
-    if (searchResults === null) return base;
-    const seen = new Set(base.map((u) => u.id));
-    return [...base, ...searchResults.filter((u) => !seen.has(u.id))];
+    if (searchResults !== null) return searchResults;
+    return members ?? [];
   }, [members, searchResults]);
 
   function toggle(u: User) {
@@ -263,7 +261,7 @@ function GroupEditor({
       <input
         className="search"
         type="search"
-        placeholder="Search team members or workspace users…"
+        placeholder="Search team members…"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
       />

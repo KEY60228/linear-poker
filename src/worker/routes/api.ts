@@ -12,7 +12,7 @@ import {
   listTeamMembers,
   listTeams,
   listUsersByIds,
-  searchUsers,
+  searchUsersInTeam,
   setProjectStatusPlanned,
   updateIssueEstimate,
 } from "../lib/linear";
@@ -69,13 +69,11 @@ api.get("/teams/:teamId/backlog-projects", async (c) => {
 
 api.get("/teams/:teamId/members", async (c) => {
   const teamId = c.req.param("teamId");
-  return c.json({ users: await listTeamMembers(token(c), teamId) });
-});
-
-api.get("/users", async (c) => {
   const q = (c.req.query("q") ?? "").trim();
-  if (q.length < 2) return c.json({ users: [] });
-  return c.json({ users: await searchUsers(token(c), q) });
+  if (q.length > 0) {
+    return c.json({ users: await searchUsersInTeam(token(c), teamId, q) });
+  }
+  return c.json({ users: await listTeamMembers(token(c), teamId) });
 });
 
 const REFERENCE_PAGE_SIZE = 10;

@@ -499,14 +499,14 @@ function ParticipantsStep({
 
   useEffect(() => {
     const q = query.trim();
-    if (q.length < 2) {
+    if (q.length < 1) {
       setSearchResults(null);
       return;
     }
     let cancelled = false;
     const t = setTimeout(() => {
       api
-        .searchUsers(q)
+        .searchTeamMembers(team.id, q)
         .then((users) => {
           if (!cancelled) setSearchResults(users);
         })
@@ -519,10 +519,10 @@ function ParticipantsStep({
   }, [query]);
 
   const candidates = useMemo<User[]>(() => {
-    const base = members ?? [];
-    if (searchResults === null) return base;
-    const seen = new Set(base.map((u) => u.id));
-    return [...base, ...searchResults.filter((u) => !seen.has(u.id))];
+    // While the user is searching, show only the search results — otherwise a
+    // match that's already a team member looks like the search is ignored.
+    if (searchResults !== null) return searchResults;
+    return members ?? [];
   }, [members, searchResults]);
 
   function toggle(u: User) {
@@ -573,13 +573,13 @@ function ParticipantsStep({
     <div className="participants">
       <h3>Pick participants</h3>
       <p className="muted">
-        Team members are listed by default. Search to add anyone else from your
-        workspace.
+        Members of this team only. Search by name or email to narrow the
+        list.
       </p>
       <input
         className="search"
         type="search"
-        placeholder="Search workspace users (name / email)…"
+        placeholder="Search team members (name / email)…"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
       />
