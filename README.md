@@ -10,6 +10,7 @@
 - **強整合ステート**: Durable Object（1 セッション = 1 DO）
 - **永続化**: D1（SQLite）
 - **トークン保管**: Workers KV（`TOKENS`）
+- **Linear API レスポンスキャッシュ**: Workers KV（`LINEAR_CACHE`、TTL 5 分）
 - **Cron**: Cloudflare Cron Trigger（リマインダー用、JST 15:00 = UTC 06:00）
 - **フロント**: React + Vite、ビルド成果物を Workers Assets で同居配信
 - **Linear API**: `@linear/sdk`（OAuth2 トークン）
@@ -39,6 +40,10 @@ pnpm wrangler d1 create linear_poker_db
 # KV (tokens)
 pnpm wrangler kv namespace create TOKENS
 # 出力された id を wrangler.jsonc の REPLACE_ME_WITH_KV_NAMESPACE_ID に貼る
+
+# KV (linear api cache)
+pnpm wrangler kv namespace create LINEAR_CACHE
+# 出力された id を wrangler.jsonc の REPLACE_ME_WITH_LINEAR_CACHE_KV_ID に貼る
 ```
 
 ### 4. マイグレーション
