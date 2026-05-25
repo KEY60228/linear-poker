@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
 import type { HonoEnv } from "../env";
+import { cached, CacheTTL } from "../lib/cache";
 import {
   findStoryPointIssue,
   getIssueSummary,
@@ -60,7 +61,15 @@ function doStub(c: Context<HonoEnv>, sessionId: string) {
 
 api.get("/me", async (c) => c.json(await getViewer(token(c))));
 
-api.get("/teams", async (c) => c.json({ teams: await listTeams(token(c)) }));
+api.get("/teams", async (c) => {
+  const teams = await cached(
+    c.env.LINEAR_CACHE,
+    `teams:${viewerId(c)}`,
+    CacheTTL.viewer,
+    () => listTeams(token(c)),
+  );
+  return c.json({ teams });
+});
 
 api.get("/teams/:teamId/backlog-projects", async (c) => {
   const teamId = c.req.param("teamId");
@@ -70,10 +79,16 @@ api.get("/teams/:teamId/backlog-projects", async (c) => {
 api.get("/teams/:teamId/members", async (c) => {
   const teamId = c.req.param("teamId");
   const q = (c.req.query("q") ?? "").trim();
-  if (q.length > 0) {
-    return c.json({ users: await searchUsersInTeam(token(c), teamId, q) });
-  }
-  return c.json({ users: await listTeamMembers(token(c), teamId) });
+  const users = await cached(
+    c.env.LINEAR_CACHE,
+    `team-members:${teamId}:${q}`,
+    CacheTTL.team,
+    () =>
+      q.length > 0
+        ? searchUsersInTeam(token(c), teamId, q)
+        : listTeamMembers(token(c), teamId),
+  );
+  return c.json({ users });
 });
 
 const REFERENCE_PAGE_SIZE = 10;

@@ -38,6 +38,10 @@
     {
       "binding": "TOKENS",
       "id": "bfcadc8a5ac24a94954b10380b003683"
+    },
+    {
+      "binding": "LINEAR_CACHE",
+      "id": "REPLACE_ME_WITH_LINEAR_CACHE_KV_ID"
     }
   ],
   "triggers": {

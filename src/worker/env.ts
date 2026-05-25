@@ -3,6 +3,7 @@ import type { SessionDO } from "./do/session";
 export interface Env {
   DB: D1Database;
   TOKENS: KVNamespace;
+  LINEAR_CACHE: KVNamespace;
   ASSETS: Fetcher;
   SESSION_DO: DurableObjectNamespace<SessionDO>;
 

@@ -13,6 +13,7 @@ See [README.md](./README.md) for product overview and [docs/handoff.md](./docs/h
 - Durable Object `SessionDO` — one DO per planning-poker session, owns strong-consistency state
 - D1 (`DB` binding) — persisted history (sessions, participants, rounds, votes, final_estimates)
 - KV (`TOKENS` binding) — OAuth access tokens, keyed by app session id
+- KV (`LINEAR_CACHE` binding) — short-TTL cache for Linear API responses that are stable enough to share (viewer's teams, team members, team-scoped user search). Use `lib/cache.ts`'s `cached()` helper; never write to it directly.
 - React + Vite SPA in `src/web`, built into `dist/web`, served by the Workers Assets binding
 - `@linear/sdk` for Linear GraphQL access
 
