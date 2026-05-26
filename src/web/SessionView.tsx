@@ -8,6 +8,7 @@ import {
   type User,
   type Viewer,
 } from "./api";
+import { ReferenceDrawer } from "./ReferenceDrawer";
 
 const POLL_INTERVAL_MS = 3000;
 
@@ -21,6 +22,7 @@ export function SessionView({
   const [state, setState] = useState<SessionState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [voting, setVoting] = useState(false);
+  const [referenceOpen, setReferenceOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -126,7 +128,7 @@ export function SessionView({
 
   return (
     <section className="session">
-      <Header state={state} />
+      <Header state={state} onOpenReference={() => setReferenceOpen(true)} />
       {error && <p className="error">Error: {error}</p>}
       <ParticipantList participants={state.participants} status={state.status} viewerId={viewer?.id ?? null} />
       {state.status === "voting" && (
@@ -168,11 +170,23 @@ export function SessionView({
       {state.status === "finalized" && (
         <FinalizedView state={state} onUnfinalize={unfinalize} />
       )}
+      <ReferenceDrawer
+        open={referenceOpen}
+        teamId={state.meta.team.id}
+        teamLabel={`${state.meta.team.key} · ${state.meta.team.name}`}
+        onClose={() => setReferenceOpen(false)}
+      />
     </section>
   );
 }
 
-function Header({ state }: { state: SessionState }) {
+function Header({
+  state,
+  onOpenReference,
+}: {
+  state: SessionState;
+  onOpenReference: () => void;
+}) {
   const { meta, status, currentRoundNo } = state;
   return (
     <header className="session-header">
@@ -191,7 +205,16 @@ function Header({ state }: { state: SessionState }) {
           · round #{currentRoundNo}
         </p>
       </div>
-      <span className={`badge badge-${status}`}>{status}</span>
+      <div className="session-header-actions">
+        <button
+          className="secondary-button"
+          onClick={onOpenReference}
+          title="Open reference scale"
+        >
+          Reference
+        </button>
+        <span className={`badge badge-${status}`}>{status}</span>
+      </div>
     </header>
   );
 }
