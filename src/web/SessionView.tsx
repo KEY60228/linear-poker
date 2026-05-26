@@ -155,13 +155,14 @@ export function SessionView({
       )}
       {state.status === "voting" && state.needsDiscussion && (
         <div className="callout warning">
-          <h3>議論待ち</h3>
+          <h3>Needs discussion</h3>
           <p>
-            全員の投票は終わっていますが <code>need_info</code> を選んだ人がいるため、
-            自動開票を保留しています。投票し直してもらうか、議論を踏まえて先に進めたい
-            場合は下の「今すぐ開票」を押してください。
+            Everyone has voted but at least one participant picked{" "}
+            <code>need_info</code>, so auto-reveal is paused. They can change
+            their vote, or anyone can press reveal below to escape and discuss
+            what's known so far.
           </p>
-          <button onClick={reveal}>今すぐ開票</button>
+          <button onClick={reveal}>Reveal now</button>
         </div>
       )}
       {state.status === "revealed" && (
