@@ -818,3 +818,52 @@ button:disabled {
   gap: 0.25rem;
   font-size: 0.875rem;
 }
+
+/* --- Wizard bulk mode --- */
+
+.bulk-controls {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  font-size: 0.875rem;
+}
+
+.bulk-controls button {
+  padding: 0.2rem 0.6rem;
+  font-size: 0.875rem;
+}
+
+.issue-row {
+  align-items: center;
+}
+
+.issue-row input[type="checkbox"] {
+  margin-right: 0.25rem;
+  flex-shrink: 0;
+}
+
+.project-summary a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.project-summary a:hover {
+  text-decoration: underline;
+}
+
+.bulk-result {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.bulk-result section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.bulk-result h4 {
+  margin: 0;
+  font-size: 0.95rem;
+}

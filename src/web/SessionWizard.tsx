@@ -11,53 +11,36 @@ import {
   type Viewer,
 } from "./api";
 
-type Step = "team" | "project" | "issue" | "participants";
+type Step = "team" | "project" | "issue" | "participants" | "result";
 
-const STEP_ORDER: Step[] = ["team", "project", "issue", "participants"];
+const STEP_ORDER: Step[] = ["team", "project", "issue", "participants", "result"];
 function stepDelta(from: Step, to: Step): number {
   return STEP_ORDER.indexOf(to) - STEP_ORDER.indexOf(from);
 }
 
 const HISTORY_KEY = "wizardStep";
-const STORAGE_KEY = "linear-poker:wizard-state";
 
 function pushStep(s: Step) {
   history.pushState({ [HISTORY_KEY]: s }, "");
 }
 
-type PersistedState = {
-  team: Team | null;
-  project: Project | null;
+type IssueStatus = "loading" | "found" | "not_found" | "duplicate" | "error";
+
+type ProjectIssueState = {
+  project: Project;
   issue: StoryPointIssue | null;
-  labelName: string;
-  issueLoaded: boolean;
+  included: boolean;
+  status: IssueStatus;
+  error?: string;
 };
 
-function persist(state: PersistedState) {
-  try {
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  } catch {
-    // ignore quota / privacy-mode errors
-  }
-}
-
-function readPersisted(): PersistedState | null {
-  try {
-    const raw = sessionStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw) as PersistedState;
-  } catch {
-    return null;
-  }
-}
-
-function clearPersisted() {
-  try {
-    sessionStorage.removeItem(STORAGE_KEY);
-  } catch {
-    // ignore
-  }
-}
+type CreateResult = {
+  projectId: string;
+  projectName: string;
+  sessionId?: string;
+  existingSessionId?: string;
+  error?: string;
+};
 
 export function SessionWizard({ viewer }: { viewer: Viewer | null }) {
   const [step, setStep] = useState<Step>("team");
@@ -66,11 +49,13 @@ export function SessionWizard({ viewer }: { viewer: Viewer | null }) {
   const [team, setTeam] = useState<Team | null>(null);
 
   const [projects, setProjects] = useState<Project[] | null>(null);
-  const [project, setProject] = useState<Project | null>(null);
+  const [selectedProjectIds, setSelectedProjectIds] = useState<Set<string>>(new Set());
 
-  const [issue, setIssue] = useState<StoryPointIssue | null>(null);
+  const [projectIssues, setProjectIssues] = useState<Map<string, ProjectIssueState>>(new Map());
   const [labelName, setLabelName] = useState<string>("story-point");
-  const [issueLoaded, setIssueLoaded] = useState(false);
+
+  const [createResults, setCreateResults] = useState<CreateResult[] | null>(null);
+  const [creating, setCreating] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
 
@@ -78,69 +63,33 @@ export function SessionWizard({ viewer }: { viewer: Viewer | null }) {
     api.teams().then(setTeams).catch((e) => setError(String(e)));
   }, []);
 
-  // Seed the current history entry. On a normal mount we start at "team",
-  // but if the user just navigated back from a session view, the previous
-  // history entry's wizardStep tells us where to land. In that case we
-  // restore team/project/issue from sessionStorage so the user can pick
-  // participants again without re-walking the whole wizard.
   useEffect(() => {
-    const s = (history.state as { [HISTORY_KEY]?: Step } | null)?.[HISTORY_KEY];
-    if (s && s !== "team") {
-      const persisted = readPersisted();
-      if (persisted) {
-        if (persisted.team) setTeam(persisted.team);
-        if (persisted.project) setProject(persisted.project);
-        if (persisted.issue) setIssue(persisted.issue);
-        if (persisted.labelName) setLabelName(persisted.labelName);
-        setIssueLoaded(persisted.issueLoaded);
-        setStep(s);
-        // Re-fetch projects if we landed on a step that lists them.
-        if ((s === "project" || s === "issue" || s === "participants") && persisted.team) {
-          api.backlogProjects(persisted.team.id).then(setProjects).catch(() => undefined);
-        }
-        return;
-      }
-    }
     history.replaceState({ [HISTORY_KEY]: "team" }, "");
   }, []);
 
-  // Mirror the wizard's data into sessionStorage so a remount (e.g. after
-  // browser-back from a created session) can land on the right step. We only
-  // write once the user has actually picked something, so the initial null
-  // state doesn't clobber a prior persisted snapshot during the restore
-  // render cycle.
-  useEffect(() => {
-    if (team || project || issue) {
-      persist({ team, project, issue, labelName, issueLoaded });
-    } else if (step === "team") {
-      clearPersisted();
-    }
-  }, [step, team, project, issue, labelName, issueLoaded]);
-
-  // Browser back/forward — rewind the wizard to the popped step.
+  // Browser back: rewind to the popped step. Forward isn't restorable here
+  // (we'd need the prior team/project data) so we leave it alone.
   useEffect(() => {
     function onPop(e: PopStateEvent) {
       const s = (e.state as { [HISTORY_KEY]?: Step } | null)?.[HISTORY_KEY];
       if (s === "team") {
         setTeam(null);
-        setProject(null);
         setProjects(null);
-        setIssue(null);
-        setIssueLoaded(false);
+        setSelectedProjectIds(new Set());
+        setProjectIssues(new Map());
+        setCreateResults(null);
         setStep("team");
       } else if (s === "project") {
-        setProject(null);
-        setIssue(null);
-        setIssueLoaded(false);
+        setProjectIssues(new Map());
+        setCreateResults(null);
         setStep("project");
       } else if (s === "issue") {
-        // Going back from "participants" — we already detected the issue for
-        // the current project, so keep it in state instead of resetting and
-        // hanging on "Detecting StoryPoint issue…" forever.
+        setCreateResults(null);
         setStep("issue");
+      } else if (s === "participants") {
+        setCreateResults(null);
+        setStep("participants");
       }
-      // "participants" via forward isn't restorable here — the Next button is
-      // the only path forward.
     }
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
@@ -148,10 +97,10 @@ export function SessionWizard({ viewer }: { viewer: Viewer | null }) {
 
   async function pickTeam(t: Team) {
     setTeam(t);
-    setProject(null);
     setProjects(null);
-    setIssue(null);
-    setIssueLoaded(false);
+    setSelectedProjectIds(new Set());
+    setProjectIssues(new Map());
+    setCreateResults(null);
     setStep("project");
     pushStep("project");
     setError(null);
@@ -162,30 +111,145 @@ export function SessionWizard({ viewer }: { viewer: Viewer | null }) {
     }
   }
 
-  async function pickProject(p: Project) {
-    setProject(p);
-    setIssue(null);
-    setIssueLoaded(false);
+  function toggleProject(p: Project) {
+    setSelectedProjectIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(p.id)) next.delete(p.id);
+      else next.add(p.id);
+      return next;
+    });
+  }
+
+  function setAllProjects(value: boolean) {
+    if (!projects) return;
+    setSelectedProjectIds(value ? new Set(projects.map((p) => p.id)) : new Set());
+  }
+
+  async function goToIssueStep() {
+    if (!projects) return;
+    const chosen = projects.filter((p) => selectedProjectIds.has(p.id));
+    if (chosen.length === 0) return;
     setStep("issue");
     pushStep("issue");
     setError(null);
-    try {
-      const res = await api.storyPointIssue(p.id);
-      setIssue(res.issue);
-      setLabelName(res.labelName);
-      setIssueLoaded(true);
-    } catch (e) {
-      setError(String(e));
-    }
+    setProjectIssues(
+      new Map(
+        chosen.map((p) => [
+          p.id,
+          { project: p, issue: null, included: true, status: "loading" as IssueStatus },
+        ]),
+      ),
+    );
+    const results = await Promise.all(
+      chosen.map(async (p) => {
+        try {
+          const res = await api.storyPointIssue(p.id);
+          return { p, res, error: null as string | null };
+        } catch (e) {
+          return { p, res: null, error: String(e) };
+        }
+      }),
+    );
+    const entries: [string, ProjectIssueState][] = results.map(({ p, res, error: errMsg }) => {
+      if (errMsg) {
+        return [
+          p.id,
+          { project: p, issue: null, included: false, status: "error", error: errMsg },
+        ];
+      }
+      const issue = res!.issue;
+      if (!issue) {
+        return [p.id, { project: p, issue: null, included: false, status: "not_found" }];
+      }
+      return [
+        p.id,
+        {
+          project: p,
+          issue,
+          included: true,
+          status: issue.duplicateCount > 0 ? "duplicate" : "found",
+        },
+      ];
+    });
+    setProjectIssues(new Map(entries));
+    // Pull the labelName from any successful response (they all share it).
+    const first = results.find((r) => r.res);
+    if (first?.res?.labelName) setLabelName(first.res.labelName);
   }
 
-  function goToParticipants() {
+  function toggleInclude(projectId: string) {
+    setProjectIssues((prev) => {
+      const next = new Map(prev);
+      const cur = next.get(projectId);
+      if (!cur) return prev;
+      if (!cur.issue) return prev; // can't include a project with no issue
+      next.set(projectId, { ...cur, included: !cur.included });
+      return next;
+    });
+  }
+
+  function goToParticipantsStep() {
     setStep("participants");
     pushStep("participants");
   }
 
-  // Breadcrumb "back" buttons go through history.back() so they share the
-  // same code path as the browser's back button.
+  async function createSessions(participantIds: string[]) {
+    if (!team) return;
+    const included = [...projectIssues.values()].filter((p) => p.included && p.issue);
+    if (included.length === 0) return;
+    setCreating(true);
+    setCreateResults(null);
+    setStep("result");
+    pushStep("result");
+    setError(null);
+    const results = await Promise.all(
+      included.map(async (item): Promise<CreateResult> => {
+        try {
+          const { id } = await api.createSession({
+            teamId: team.id,
+            projectId: item.project.id,
+            issueId: item.issue!.id,
+            participantIds,
+          });
+          return {
+            projectId: item.project.id,
+            projectName: item.project.name,
+            sessionId: id,
+          };
+        } catch (e) {
+          if (apiErrorCode(e) === "session_already_exists") {
+            const body = apiErrorBody(e);
+            const existing =
+              body && typeof body.existingSessionId === "string"
+                ? body.existingSessionId
+                : undefined;
+            return {
+              projectId: item.project.id,
+              projectName: item.project.name,
+              existingSessionId: existing,
+              error: "session_already_exists",
+            };
+          }
+          return {
+            projectId: item.project.id,
+            projectName: item.project.name,
+            error: String(e),
+          };
+        }
+      }),
+    );
+    setCreateResults(results);
+    setCreating(false);
+
+    // If exactly one session was created and nothing else needs attention,
+    // jump straight into it.
+    const created = results.filter((r) => !!r.sessionId);
+    const noOtherToShow = results.length === created.length;
+    if (created.length === 1 && noOtherToShow) {
+      window.location.hash = `#/sessions/${created[0]!.sessionId}`;
+    }
+  }
+
   function goBackToTeam() {
     history.go(stepDelta(step, "team"));
   }
@@ -196,41 +260,61 @@ export function SessionWizard({ viewer }: { viewer: Viewer | null }) {
     history.go(stepDelta(step, "issue"));
   }
 
+  const includedCount = [...projectIssues.values()].filter((p) => p.included && p.issue).length;
+  const selectedProjects = useMemo(() => {
+    if (!projects) return [];
+    return projects.filter((p) => selectedProjectIds.has(p.id));
+  }, [projects, selectedProjectIds]);
+
   return (
     <section className="wizard">
       <Breadcrumbs
         step={step}
         team={team}
-        project={project}
-        issue={issue}
+        selectedCount={selectedProjectIds.size}
+        includedCount={includedCount}
         onBackToTeam={goBackToTeam}
         onBackToProject={goBackToProject}
         onBackToIssue={goBackToIssue}
       />
-      <SelectionContext team={team} project={project} issue={issue} step={step} />
+      <SelectionContext
+        step={step}
+        team={team}
+        selectedProjects={selectedProjects}
+      />
       {error && <p className="error">Error: {error}</p>}
 
       {step === "team" && <TeamList teams={teams} onPick={pickTeam} />}
       {step === "project" && (
-        <ProjectList projects={projects} onPick={pickProject} />
+        <ProjectList
+          projects={projects}
+          selectedIds={selectedProjectIds}
+          onToggle={toggleProject}
+          onSelectAll={() => setAllProjects(true)}
+          onDeselectAll={() => setAllProjects(false)}
+          onProceed={goToIssueStep}
+        />
       )}
       {step === "issue" && (
-        <IssuePreview
-          issue={issue}
+        <IssueDetectionPanel
+          items={[...projectIssues.values()]}
           labelName={labelName}
-          loaded={issueLoaded}
-          canProceed={!!issue}
-          onRetry={() => project && pickProject(project)}
-          onProceed={goToParticipants}
+          onToggleInclude={toggleInclude}
+          canProceed={includedCount > 0}
+          onProceed={goToParticipantsStep}
         />
       )}
-      {step === "participants" && team && project && issue && (
+      {step === "participants" && team && includedCount > 0 && (
         <ParticipantsStep
           team={team}
-          project={project}
-          issue={issue}
           viewer={viewer}
+          includedCount={includedCount}
+          onCreate={createSessions}
+          creating={creating}
         />
+      )}
+      {step === "result" && (
+        <ResultPanel results={createResults} creating={creating} />
       )}
     </section>
   );
@@ -239,19 +323,18 @@ export function SessionWizard({ viewer }: { viewer: Viewer | null }) {
 function Breadcrumbs(props: {
   step: Step;
   team: Team | null;
-  project: Project | null;
-  issue: StoryPointIssue | null;
+  selectedCount: number;
+  includedCount: number;
   onBackToTeam: () => void;
   onBackToProject: () => void;
   onBackToIssue: () => void;
 }) {
-  // Participants is the final step — there's no "past" state, only current
-  // (we're on it) or future (we haven't gotten there yet).
   const reached = {
     team: true,
     project: !!props.team,
-    issue: !!props.project,
+    issue: props.selectedCount > 0,
     participants: false,
+    result: false,
   };
   const cls = (s: Step) => {
     if (props.step === s) return "crumb current";
@@ -272,7 +355,7 @@ function Breadcrumbs(props: {
         disabled={!reached.project || props.step === "project"}
         onClick={props.onBackToProject}
       >
-        2. Project
+        2. Projects
       </button>
       <span className="crumb-sep">›</span>
       <button
@@ -280,7 +363,7 @@ function Breadcrumbs(props: {
         disabled={!reached.issue || props.step === "issue"}
         onClick={props.onBackToIssue}
       >
-        3. Issue
+        3. Issues
       </button>
       <span className="crumb-sep">›</span>
       <span className={cls("participants")}>4. Participants</span>
@@ -291,28 +374,41 @@ function Breadcrumbs(props: {
 function SelectionContext({
   step,
   team,
-  project,
-  issue,
+  selectedProjects,
 }: {
   step: Step;
   team: Team | null;
-  project: Project | null;
-  issue: StoryPointIssue | null;
+  selectedProjects: Project[];
 }) {
-  // Show only the items the user has already locked in (skip the one they're
-  // currently choosing).
-  const parts: { label: string; href: string; text: string }[] = [];
+  const parts: { label: string; node: React.ReactNode }[] = [];
   if (team && step !== "team") {
-    parts.push({ label: "Team", href: team.url, text: `${team.key} · ${team.name}` });
-  }
-  if (project && step !== "project" && step !== "team") {
-    parts.push({ label: "Project", href: project.url, text: project.name });
-  }
-  if (issue && step === "participants") {
     parts.push({
-      label: "Issue",
-      href: issue.url,
-      text: `${issue.identifier} ${issue.title}`,
+      label: "Team",
+      node: (
+        <a href={team.url} target="_blank" rel="noreferrer">
+          {team.key} · {team.name}
+        </a>
+      ),
+    });
+  }
+  if (selectedProjects.length > 0 && step !== "team" && step !== "project") {
+    parts.push({
+      label: `Projects (${selectedProjects.length})`,
+      node: (
+        <span className="project-summary">
+          {selectedProjects.slice(0, 3).map((p, i) => (
+            <span key={p.id}>
+              <a href={p.url} target="_blank" rel="noreferrer">
+                {p.name}
+              </a>
+              {i < Math.min(selectedProjects.length, 3) - 1 ? ", " : ""}
+            </span>
+          ))}
+          {selectedProjects.length > 3 && (
+            <em className="muted"> + {selectedProjects.length - 3} more</em>
+          )}
+        </span>
+      ),
     });
   }
   if (parts.length === 0) return null;
@@ -321,11 +417,7 @@ function SelectionContext({
       {parts.map((p) => (
         <div className="selection-row" key={p.label}>
           <dt>{p.label}</dt>
-          <dd>
-            <a href={p.href} target="_blank" rel="noreferrer">
-              {p.text}
-            </a>
-          </dd>
+          <dd>{p.node}</dd>
         </div>
       ))}
     </dl>
@@ -351,10 +443,18 @@ function TeamList({ teams, onPick }: { teams: Team[] | null; onPick: (t: Team) =
 
 function ProjectList({
   projects,
-  onPick,
+  selectedIds,
+  onToggle,
+  onSelectAll,
+  onDeselectAll,
+  onProceed,
 }: {
   projects: Project[] | null;
-  onPick: (p: Project) => void;
+  selectedIds: Set<string>;
+  onToggle: (p: Project) => void;
+  onSelectAll: () => void;
+  onDeselectAll: () => void;
+  onProceed: () => void;
 }) {
   if (projects === null) return <p>Loading projects…</p>;
   if (projects.length === 0) {
@@ -366,95 +466,148 @@ function ProjectList({
     );
   }
   return (
-    <ul className="list">
-      {projects.map((p) => (
-        <li key={p.id}>
-          <button className="row" onClick={() => onPick(p)}>
-            <span>{p.name}</span>
-            {p.description && <em className="muted">{p.description}</em>}
-          </button>
-        </li>
-      ))}
-    </ul>
+    <>
+      <div className="bulk-controls">
+        <span className="muted">
+          {selectedIds.size} / {projects.length} selected
+        </span>
+        <button onClick={onSelectAll}>Select all</button>
+        <button onClick={onDeselectAll}>Deselect all</button>
+      </div>
+      <ul className="list">
+        {projects.map((p) => {
+          const picked = selectedIds.has(p.id);
+          return (
+            <li key={p.id}>
+              <button
+                className={`row ${picked ? "row-selected" : ""}`}
+                onClick={() => onToggle(p)}
+              >
+                <span>{picked ? "✓" : ""}</span>
+                <span>{p.name}</span>
+                {p.description && <em className="muted">{p.description}</em>}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      <p className="actions">
+        <button
+          className="primary-button"
+          disabled={selectedIds.size === 0}
+          onClick={onProceed}
+        >
+          Next: detect StoryPoint issues ({selectedIds.size}) →
+        </button>
+      </p>
+    </>
   );
 }
 
-function IssuePreview({
-  issue,
+function IssueDetectionPanel({
+  items,
   labelName,
-  loaded,
+  onToggleInclude,
   canProceed,
-  onRetry,
   onProceed,
 }: {
-  issue: StoryPointIssue | null;
+  items: ProjectIssueState[];
   labelName: string;
-  loaded: boolean;
+  onToggleInclude: (projectId: string) => void;
   canProceed: boolean;
-  onRetry: () => void;
   onProceed: () => void;
 }) {
-  if (!loaded) return <p>Detecting StoryPoint issue…</p>;
-
-  if (!issue) {
-    return (
-      <div className="callout warning">
-        <h3>No StoryPoint issue found</h3>
-        <p>
-          This project has no issue labelled <code>{labelName}</code>. Create one
-          (or apply the label to an existing issue) and try again.
-        </p>
-        <button onClick={onRetry}>Retry detection</button>
-      </div>
-    );
-  }
-
   return (
-    <div className="callout">
-      <h3>Detected issue</h3>
-      <p className="issue-line">
-        <a href={issue.url} target="_blank" rel="noreferrer">
-          <strong>{issue.identifier}</strong>
-        </a>{" "}
-        <span>{issue.title}</span>
-      </p>
+    <>
       <p className="muted">
-        Current estimate: {issue.estimate === null ? "—" : String(issue.estimate)}
+        Detecting the <code>{labelName}</code>-labelled issue in each selected
+        project. Uncheck a row to skip it; "not found" rows can't be included.
       </p>
-      {issue.duplicateCount > 0 && (
-        <p className="warning">
-          ⚠ {issue.duplicateCount} other issue(s) in this project also carry the{" "}
-          <code>{labelName}</code> label. The detection picks the first match —
-          consider de-duplicating before creating a session.
-        </p>
-      )}
+      <ul className="list">
+        {items.map((item) => (
+          <li key={item.project.id}>
+            <div className="row row-static issue-row">
+              <input
+                type="checkbox"
+                checked={item.included}
+                disabled={!item.issue}
+                onChange={() => onToggleInclude(item.project.id)}
+                aria-label={`Include ${item.project.name}`}
+              />
+              <span className="ref-main">
+                <strong>{item.project.name}</strong>
+                {item.status === "loading" && (
+                  <em className="muted"> detecting…</em>
+                )}
+                {item.status === "found" && item.issue && (
+                  <em className="muted">
+                    {" — "}
+                    <a href={item.issue.url} target="_blank" rel="noreferrer">
+                      {item.issue.identifier}
+                    </a>{" "}
+                    {item.issue.title}
+                  </em>
+                )}
+                {item.status === "duplicate" && item.issue && (
+                  <em className="muted">
+                    {" — "}
+                    <a href={item.issue.url} target="_blank" rel="noreferrer">
+                      {item.issue.identifier}
+                    </a>{" "}
+                    {item.issue.title}
+                  </em>
+                )}
+                {item.status === "not_found" && (
+                  <em className="muted"> — no StoryPoint issue</em>
+                )}
+                {item.status === "error" && (
+                  <em className="muted"> — {item.error ?? "error"}</em>
+                )}
+              </span>
+              {item.status === "duplicate" && (
+                <span className="tag tag-info">duplicate label</span>
+              )}
+              {item.status === "not_found" && (
+                <span className="tag tag-pending">skip</span>
+              )}
+              {item.status === "error" && (
+                <span className="tag tag-pending">error</span>
+              )}
+            </div>
+          </li>
+        ))}
+      </ul>
       <p className="actions">
-        <button className="primary-button" disabled={!canProceed} onClick={onProceed}>
+        <button
+          className="primary-button"
+          disabled={!canProceed}
+          onClick={onProceed}
+        >
           Next: pick participants →
         </button>
       </p>
-    </div>
+    </>
   );
 }
 
 function ParticipantsStep({
   team,
-  project,
-  issue,
   viewer,
+  includedCount,
+  onCreate,
+  creating,
 }: {
   team: Team;
-  project: Project;
-  issue: StoryPointIssue;
   viewer: Viewer | null;
+  includedCount: number;
+  onCreate: (participantIds: string[]) => Promise<void>;
+  creating: boolean;
 }) {
   const [members, setMembers] = useState<User[] | null>(null);
   const [searchResults, setSearchResults] = useState<User[] | null>(null);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Map<string, { id: string; displayName: string; email: string }>>(new Map());
-  const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [existingSessionId, setExistingSessionId] = useState<string | null>(null);
   const [groups, setGroups] = useState<ParticipantGroup[] | null>(null);
 
   useEffect(() => {
@@ -462,7 +615,6 @@ function ParticipantsStep({
       .teamMembers(team.id)
       .then((users) => {
         setMembers(users);
-        // Pre-select the viewer (they're creating the session).
         if (viewer) {
           const me = users.find((u) => u.id === viewer.id);
           if (me) {
@@ -480,22 +632,6 @@ function ParticipantsStep({
   useEffect(() => {
     api.listGroups(team.id).then(setGroups).catch(() => undefined);
   }, [team.id]);
-
-  function applyGroup(g: ParticipantGroup) {
-    setSelected((prev) => {
-      const next = new Map(prev);
-      for (const m of g.members) {
-        if (!next.has(m.userId)) {
-          next.set(m.userId, {
-            id: m.userId,
-            displayName: m.displayName,
-            email: m.email,
-          });
-        }
-      }
-      return next;
-    });
-  }
 
   useEffect(() => {
     const q = query.trim();
@@ -516,11 +652,9 @@ function ParticipantsStep({
       cancelled = true;
       clearTimeout(t);
     };
-  }, [query]);
+  }, [query, team.id]);
 
   const candidates = useMemo<User[]>(() => {
-    // While the user is searching, show only the search results — otherwise a
-    // match that's already a team member looks like the search is ignored.
     if (searchResults !== null) return searchResults;
     return members ?? [];
   }, [members, searchResults]);
@@ -542,39 +676,33 @@ function ParticipantsStep({
     });
   }
 
-  async function createSession() {
-    if (selected.size === 0) return;
-    setCreating(true);
-    setError(null);
-    setExistingSessionId(null);
-    try {
-      const { id } = await api.createSession({
-        teamId: team.id,
-        projectId: project.id,
-        issueId: issue.id,
-        participantIds: Array.from(selected.keys()),
-      });
-      window.location.hash = `#/sessions/${id}`;
-    } catch (e) {
-      if (apiErrorCode(e) === "session_already_exists") {
-        const body = apiErrorBody(e);
-        const existing = body && typeof body.existingSessionId === "string"
-          ? body.existingSessionId
-          : null;
-        setExistingSessionId(existing);
-      } else {
-        setError(String(e));
+  function applyGroup(g: ParticipantGroup) {
+    setSelected((prev) => {
+      const next = new Map(prev);
+      for (const m of g.members) {
+        if (!next.has(m.userId)) {
+          next.set(m.userId, {
+            id: m.userId,
+            displayName: m.displayName,
+            email: m.email,
+          });
+        }
       }
-      setCreating(false);
-    }
+      return next;
+    });
+  }
+
+  async function submit() {
+    if (selected.size === 0) return;
+    await onCreate([...selected.keys()]);
   }
 
   return (
     <div className="participants">
       <h3>Pick participants</h3>
       <p className="muted">
-        Members of this team only. Search by name or email to narrow the
-        list.
+        These participants will be added to all {includedCount} session(s).
+        Members of this team only — search by name or email to narrow the list.
       </p>
       <input
         className="search"
@@ -641,22 +769,95 @@ function ParticipantsStep({
         <button
           className="primary-button"
           disabled={selected.size === 0 || creating}
-          onClick={createSession}
+          onClick={submit}
         >
-          {creating ? "Creating session…" : `Create session (${selected.size} participants)`}
+          {creating
+            ? "Creating sessions…"
+            : `Create ${includedCount} session(s) with ${selected.size} participant(s)`}
         </button>
       </p>
       {error && <p className="error">Error: {error}</p>}
-      {existingSessionId && (
-        <div className="callout warning">
-          <h4>A session for this issue already exists</h4>
-          <p>
-            Linear allows only one active planning poker session per StoryPoint
-            issue.{" "}
-            <a href={`#/sessions/${existingSessionId}`}>Open the existing session →</a>
-          </p>
-        </div>
+    </div>
+  );
+}
+
+function ResultPanel({
+  results,
+  creating,
+}: {
+  results: CreateResult[] | null;
+  creating: boolean;
+}) {
+  if (creating || !results) {
+    return <p>Creating sessions…</p>;
+  }
+  const created = results.filter((r) => r.sessionId);
+  const skipped = results.filter((r) => !r.sessionId && r.existingSessionId);
+  const failed = results.filter((r) => !r.sessionId && !r.existingSessionId);
+  return (
+    <div className="bulk-result">
+      <h3>Result</h3>
+      <p className="muted">
+        Created {created.length} · Skipped {skipped.length} · Failed {failed.length}
+      </p>
+      {created.length > 0 && (
+        <section>
+          <h4>Created</h4>
+          <ul className="list">
+            {created.map((r) => (
+              <li key={r.projectId}>
+                <a className="row row-static" href={`#/sessions/${r.sessionId}`}>
+                  <span className="tag tag-ok">created</span>
+                  <span className="ref-main">{r.projectName}</span>
+                </a>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
+      {skipped.length > 0 && (
+        <section>
+          <h4>Skipped (session already exists)</h4>
+          <ul className="list">
+            {skipped.map((r) => (
+              <li key={r.projectId}>
+                <a
+                  className="row row-static"
+                  href={
+                    r.existingSessionId ? `#/sessions/${r.existingSessionId}` : "#/"
+                  }
+                >
+                  <span className="tag tag-info">existing</span>
+                  <span className="ref-main">{r.projectName}</span>
+                </a>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {failed.length > 0 && (
+        <section>
+          <h4>Failed</h4>
+          <ul className="list">
+            {failed.map((r) => (
+              <li key={r.projectId}>
+                <div className="row row-static">
+                  <span className="tag tag-pending">failed</span>
+                  <span className="ref-main">
+                    {r.projectName}
+                    <em className="muted"> — {r.error}</em>
+                  </span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      <p className="actions">
+        <a className="primary" href="#/">
+          Back to sessions
+        </a>
+      </p>
     </div>
   );
 }
