@@ -141,6 +141,24 @@ export class ApiError extends Error {
   }
 }
 
+// Global hook invoked the first moment a request comes back 401. Used by the
+// shell to flip the app back to the login screen if the cookie expired while
+// the user was sitting on a session view.
+let onUnauthenticated: (() => void) | null = null;
+export function setUnauthenticatedHandler(handler: (() => void) | null) {
+  onUnauthenticated = handler;
+}
+
+function notifyIfUnauthorized(status: number) {
+  if (status === 401 && onUnauthenticated) {
+    try {
+      onUnauthenticated();
+    } catch {
+      // never let the hook break the request lifecycle
+    }
+  }
+}
+
 function isRecord(x: unknown): x is Record<string, unknown> {
   return typeof x === "object" && x !== null;
 }
@@ -168,6 +186,7 @@ async function readErrorBody(res: Response): Promise<unknown> {
 async function jsonGet<T>(path: string): Promise<T> {
   const res = await fetch(path, { credentials: "same-origin" });
   if (!res.ok) {
+    notifyIfUnauthorized(res.status);
     throw new ApiError(res.status, res.statusText, await readErrorBody(res));
   }
   return (await res.json()) as T;
@@ -181,6 +200,7 @@ async function jsonPost<T>(path: string, body: unknown): Promise<T> {
     body: JSON.stringify(body ?? {}),
   });
   if (!res.ok) {
+    notifyIfUnauthorized(res.status);
     throw new ApiError(res.status, res.statusText, await readErrorBody(res));
   }
   return (await res.json()) as T;
@@ -194,6 +214,7 @@ async function jsonPatch<T>(path: string, body: unknown): Promise<T> {
     body: JSON.stringify(body ?? {}),
   });
   if (!res.ok) {
+    notifyIfUnauthorized(res.status);
     throw new ApiError(res.status, res.statusText, await readErrorBody(res));
   }
   return (await res.json()) as T;
@@ -202,6 +223,7 @@ async function jsonPatch<T>(path: string, body: unknown): Promise<T> {
 async function jsonDelete<T>(path: string): Promise<T> {
   const res = await fetch(path, { method: "DELETE", credentials: "same-origin" });
   if (!res.ok) {
+    notifyIfUnauthorized(res.status);
     throw new ApiError(res.status, res.statusText, await readErrorBody(res));
   }
   return (await res.json()) as T;
