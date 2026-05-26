@@ -98,29 +98,38 @@ api.get("/teams/:teamId/storypoint-references", async (c) => {
   const label = c.env.STORY_POINT_LABEL_NAME;
   const accessToken = token(c);
 
-  // Discover the team's scale options first — we paginate one estimate value
-  // at a time so each card on the page can independently page through its
-  // own bucket of issues.
-  const team = await getTeamSummary(accessToken, teamId);
-  const estimates = team.scale.options
-    .map((o) => Number(o.value))
-    .filter((n) => !Number.isNaN(n));
+  const result = await cached(
+    c.env.LINEAR_CACHE,
+    `storypoint-refs:${teamId}:initial`,
+    CacheTTL.team,
+    async () => {
+      // Discover the team's scale options first — we paginate one estimate
+      // value at a time so each card on the page can independently page
+      // through its own bucket of issues.
+      const team = await getTeamSummary(accessToken, teamId);
+      const estimates = team.scale.options
+        .map((o) => Number(o.value))
+        .filter((n) => !Number.isNaN(n));
 
-  const groups = await Promise.all(
-    estimates.map(async (estimate) => {
-      const page = await listStoryPointIssuesByEstimate(
-        accessToken,
-        teamId,
-        label,
-        estimate,
-        null,
-        REFERENCE_PAGE_SIZE,
+      const groups = await Promise.all(
+        estimates.map(async (estimate) => {
+          const page = await listStoryPointIssuesByEstimate(
+            accessToken,
+            teamId,
+            label,
+            estimate,
+            null,
+            REFERENCE_PAGE_SIZE,
+          );
+          return { estimate, ...page };
+        }),
       );
-      return { estimate, ...page };
-    }),
+
+      return { groups, labelName: label };
+    },
   );
 
-  return c.json({ groups, labelName: label });
+  return c.json(result);
 });
 
 api.get("/teams/:teamId/storypoint-references/:estimate", async (c) => {
@@ -129,14 +138,20 @@ api.get("/teams/:teamId/storypoint-references/:estimate", async (c) => {
   if (Number.isNaN(estimate)) {
     return c.json({ error: "invalid_estimate" }, 400);
   }
-  const after = c.req.query("after") ?? null;
-  const page = await listStoryPointIssuesByEstimate(
-    token(c),
-    teamId,
-    c.env.STORY_POINT_LABEL_NAME,
-    estimate,
-    after,
-    REFERENCE_PAGE_SIZE,
+  const after = c.req.query("after") ?? "";
+  const page = await cached(
+    c.env.LINEAR_CACHE,
+    `storypoint-refs:${teamId}:${estimate}:${after}`,
+    CacheTTL.team,
+    () =>
+      listStoryPointIssuesByEstimate(
+        token(c),
+        teamId,
+        c.env.STORY_POINT_LABEL_NAME,
+        estimate,
+        after || null,
+        REFERENCE_PAGE_SIZE,
+      ),
   );
   return c.json(page);
 });
