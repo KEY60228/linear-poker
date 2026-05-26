@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type AuthStatus, type Viewer } from "./api";
+import { api, setUnauthenticatedHandler, type AuthStatus, type Viewer } from "./api";
 import { SessionWizard } from "./SessionWizard";
 import { SessionView } from "./SessionView";
 import { SessionList } from "./SessionList";
@@ -45,6 +45,19 @@ export function App() {
     }
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+
+  // Any 401 from a Worker route — e.g. the session cookie expired while the
+  // user sat on the session view — flips the shell back to the login screen
+  // instead of bubbling up a generic error.
+  useEffect(() => {
+    setUnauthenticatedHandler(() => {
+      setStatus({ authenticated: false, userId: null });
+      setViewer(null);
+      setError(null);
+      if (window.location.hash) window.location.hash = "";
+    });
+    return () => setUnauthenticatedHandler(null);
   }, []);
 
   async function logout() {

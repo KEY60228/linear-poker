@@ -36,13 +36,20 @@ export async function sign(payload: string, secret: string): Promise<string> {
 }
 
 export async function verify(signed: string, secret: string): Promise<string | null> {
-  const idx = signed.lastIndexOf(".");
-  if (idx < 0) return null;
-  const payload = signed.slice(0, idx);
-  const sig = signed.slice(idx + 1);
-  const key = await hmacKey(secret);
-  const ok = await crypto.subtle.verify("HMAC", key, fromBase64Url(sig), enc.encode(payload));
-  return ok ? payload : null;
+  // Cookies in the wild can be malformed (truncated, mangled, signed by an
+  // older secret). Catch any decoding/crypto error and treat it as "no
+  // session" instead of bubbling a 500.
+  try {
+    const idx = signed.lastIndexOf(".");
+    if (idx < 0) return null;
+    const payload = signed.slice(0, idx);
+    const sig = signed.slice(idx + 1);
+    const key = await hmacKey(secret);
+    const ok = await crypto.subtle.verify("HMAC", key, fromBase64Url(sig), enc.encode(payload));
+    return ok ? payload : null;
+  } catch {
+    return null;
+  }
 }
 
 export function randomId(byteLength = 24): string {
