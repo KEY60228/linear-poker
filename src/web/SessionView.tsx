@@ -146,7 +146,7 @@ export function SessionView({
       {state.status === "voting" && isParticipant && (
         <VotePad
           state={state}
-          myVote={me?.voted ? (me.votedNeedInfo ? NEED_INFO : "voted") : null}
+          myVote={me?.value ?? null}
           disabled={voting}
           onVote={vote}
         />
@@ -220,7 +220,9 @@ function ParticipantList({
                 (p.voted
                   ? p.votedNeedInfo
                     ? <span className="tag tag-info">need_info</span>
-                    : <span className="tag tag-ok">voted</span>
+                    : me && p.value !== null
+                      ? <span className="tag tag-value">{p.value}</span>
+                      : <span className="tag tag-ok">voted</span>
                   : <span className="tag tag-pending">pending</span>)}
               {status !== "voting" && (
                 p.value === null
@@ -248,23 +250,39 @@ function VotePad({
   disabled: boolean;
   onVote: (value: string) => void;
 }) {
+  const myLabel =
+    myVote === null
+      ? null
+      : myVote === NEED_INFO
+        ? "need_info"
+        : state.meta.scale.options.find((o) => o.value === myVote)?.label ?? myVote;
   return (
     <div className="votepad">
-      <h3>Your vote {myVote && <em className="muted">(submitted — pick again to change)</em>}</h3>
+      <h3>
+        Your vote{" "}
+        {myLabel !== null && (
+          <em className="muted">
+            (you voted <strong>{myLabel}</strong> — pick again to change)
+          </em>
+        )}
+      </h3>
       <div className="vote-buttons">
-        {state.meta.scale.options.map((opt) => (
-          <button
-            key={opt.value}
-            disabled={disabled}
-            className="vote-button"
-            onClick={() => onVote(opt.value)}
-          >
-            {opt.label}
-          </button>
-        ))}
+        {state.meta.scale.options.map((opt) => {
+          const isMyVote = myVote === opt.value;
+          return (
+            <button
+              key={opt.value}
+              disabled={disabled}
+              className={`vote-button ${isMyVote ? "vote-selected" : ""}`}
+              onClick={() => onVote(opt.value)}
+            >
+              {opt.label}
+            </button>
+          );
+        })}
         <button
           disabled={disabled}
-          className="vote-button vote-need-info"
+          className={`vote-button vote-need-info ${myVote === NEED_INFO ? "vote-selected" : ""}`}
           onClick={() => onVote(NEED_INFO)}
         >
           need_info

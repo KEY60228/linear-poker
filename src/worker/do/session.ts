@@ -228,9 +228,9 @@ export class SessionDO extends DurableObject<Env> {
     ]);
   }
 
-  async getState(sessionId: string): Promise<SessionStateDTO> {
+  async getState(sessionId: string, viewerUserId: string | null = null): Promise<SessionStateDTO> {
     const session = await this.requireSession(sessionId);
-    return await this.buildStateDTO(session);
+    return await this.buildStateDTO(session, viewerUserId);
   }
 
   // ---- private helpers -------------------------------------------------
@@ -274,7 +274,10 @@ export class SessionDO extends DurableObject<Env> {
     ]);
   }
 
-  private async buildStateDTO(session: NonNullable<Awaited<ReturnType<typeof getSession>>>) {
+  private async buildStateDTO(
+    session: NonNullable<Awaited<ReturnType<typeof getSession>>>,
+    viewerUserId: string | null,
+  ) {
     const meta = parseMeta(session.meta_json);
     const participants = await listParticipants(this.env.DB, session.id);
     const round = await getCurrentRound(
@@ -292,14 +295,19 @@ export class SessionDO extends DurableObject<Env> {
       const v = voteByUser.get(p.user_id) ?? null;
       const voted = v !== null;
       const votedNeedInfo = v === NEED_INFO_VALUE;
+      // During voting we hide other participants' values, but always surface
+      // the viewer's own vote so they can recall what they picked while
+      // waiting on others. need_info is public anyway (it drives the
+      // "needs discussion" badge).
+      const isMe = viewerUserId !== null && p.user_id === viewerUserId;
+      const value = !isVoting || isMe ? v : null;
       return {
         userId: p.user_id,
         displayName: p.display_name,
         email: p.email,
         voted,
         votedNeedInfo,
-        // During voting we hide values; need_info is visible as a flag only.
-        value: isVoting ? null : v,
+        value,
       };
     });
 

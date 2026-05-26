@@ -233,7 +233,7 @@ api.post("/sessions", async (c) => {
 api.get("/sessions/:id", async (c) => {
   const id = c.req.param("id");
   try {
-    const state = await doStub(c, id).getState(id);
+    const state = await doStub(c, id).getState(id, viewerId(c));
     return c.json(state);
   } catch (e) {
     if (e instanceof Error && e.message === "session_not_found") {
@@ -299,7 +299,7 @@ api.post("/sessions/:id/finalize", async (c) => {
   // to grab the Linear issue id without an extra Linear call.
   let state;
   try {
-    state = await doStub(c, id).getState(id);
+    state = await doStub(c, id).getState(id, viewerId(c));
   } catch (e) {
     if (e instanceof Error && e.message === "session_not_found") {
       return c.json({ error: "not_found" }, 404);
