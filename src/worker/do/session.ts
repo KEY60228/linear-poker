@@ -311,7 +311,15 @@ export class SessionDO extends DurableObject<Env> {
       };
     });
 
-    const needsDiscussion = isVoting && participantsDTO.some((p) => p.votedNeedInfo);
+    // "Needs discussion" only fires once everyone has voted and at least one
+    // of them picked need_info — that's the state where auto-reveal is
+    // actually paused and the manual reveal button is useful. While the
+    // round is still missing votes, a single early need_info isn't a
+    // discussion trigger yet.
+    const allVoted =
+      participantsDTO.length > 0 && participantsDTO.every((p) => p.voted);
+    const anyNeedInfo = participantsDTO.some((p) => p.votedNeedInfo);
+    const needsDiscussion = isVoting && allVoted && anyNeedInfo;
 
     const finalRow =
       session.status === "finalized"
