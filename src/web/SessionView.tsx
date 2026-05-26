@@ -157,9 +157,10 @@ export function SessionView({
         <div className="callout warning">
           <h3>Needs discussion</h3>
           <p>
-            At least one participant voted <code>need_info</code>. Auto-reveal is
-            paused. They can change their vote, or anyone can press reveal below
-            to escape and discuss what's known so far.
+            Everyone has voted but at least one participant picked{" "}
+            <code>need_info</code>, so auto-reveal is paused. They can change
+            their vote, or anyone can press reveal below to escape and discuss
+            what's known so far.
           </p>
           <button onClick={reveal}>Reveal now</button>
         </div>
