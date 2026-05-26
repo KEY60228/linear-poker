@@ -90,11 +90,12 @@ export function SessionList() {
               <a className="row session-row" href={`#/sessions/${s.id}`}>
                 <span className={`badge badge-${s.status}`}>{s.status}</span>
                 <span className="session-row-main">
-                  <span className="session-row-title">
+                  <span className="session-row-title">{s.project.name}</span>
+                  <span className="muted">
                     <strong>{s.issue.identifier}</strong> {s.issue.title}
                   </span>
                   <span className="muted">
-                    {s.team.key} · {s.project.name} · round #{s.currentRoundNo}
+                    {s.team.key} · round #{s.currentRoundNo}
                   </span>
                   <span className="session-row-meta">
                     {s.status === "voting" && (
