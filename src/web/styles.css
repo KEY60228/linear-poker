@@ -656,6 +656,29 @@ button:disabled {
   margin-top: 0.15rem;
 }
 
+.session-section + .session-section {
+  margin-top: 1rem;
+}
+
+.session-section-title {
+  font-size: 0.875rem;
+  margin: 0 0 0.4rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.session-row-urgent {
+  border-left: 3px solid var(--accent);
+  padding-left: calc(1rem - 3px);
+}
+
+.tag-urgent {
+  color: var(--accent);
+  border-color: currentColor;
+  font-weight: 600;
+}
+
 /* --- Reference scale --- */
 
 .header-actions {

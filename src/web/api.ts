@@ -60,6 +60,7 @@ export type SessionListItem = {
   needInfoCount: number;
   isParticipant: boolean;
   isFacilitator: boolean;
+  viewerHasVoted: boolean;
   finalEstimate: { value: string; finalizedAt: number } | null;
 };
 
