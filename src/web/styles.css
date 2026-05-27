@@ -669,12 +669,12 @@ button:disabled {
 }
 
 .session-row-urgent {
-  border-left: 3px solid #c33;
+  border-left: 3px solid var(--accent);
   padding-left: calc(1rem - 3px);
 }
 
 .tag-urgent {
-  color: #c33;
+  color: var(--accent);
   border-color: currentColor;
   font-weight: 600;
 }
