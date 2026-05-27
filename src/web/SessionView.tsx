@@ -47,6 +47,12 @@ export function SessionView({
   }, [state?.status]);
 
   useEffect(() => {
+    // Clear stale state when navigating to a different session so children
+    // that snapshot off `state` on mount (e.g. RevealedView's selected
+    // value) don't briefly initialise from the previous session before the
+    // polling tick replaces it.
+    setState(null);
+    setError(null);
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
 
