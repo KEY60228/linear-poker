@@ -65,17 +65,34 @@ export function SessionView({
     };
   }, [sessionId]);
 
+  // Match the SessionList Voting tab: "vote needed" rows first, then the
+  // "waiting for others" rows. Each bucket stays in created_at DESC order
+  // (the order the API already returned).
+  const orderedSiblings = useMemo(() => {
+    if (!siblings) return null;
+    const needsVote: SessionListItem[] = [];
+    const waiting: SessionListItem[] = [];
+    for (const s of siblings) {
+      if (s.isParticipant && !s.viewerHasVoted) needsVote.push(s);
+      else waiting.push(s);
+    }
+    return [...needsVote, ...waiting];
+  }, [siblings]);
+
   // Where does this session sit in the viewer's voting backlog? Computed here
   // so the hook ordering stays consistent across the early-return path below.
   const { prevId, nextId } = useMemo(() => {
-    if (!siblings) return { prevId: null, nextId: null } as const;
-    const idx = siblings.findIndex((r) => r.id === sessionId);
+    if (!orderedSiblings) return { prevId: null, nextId: null } as const;
+    const idx = orderedSiblings.findIndex((r) => r.id === sessionId);
     if (idx < 0) return { prevId: null, nextId: null } as const;
     return {
-      prevId: idx > 0 ? siblings[idx - 1]!.id : null,
-      nextId: idx < siblings.length - 1 ? siblings[idx + 1]!.id : null,
+      prevId: idx > 0 ? orderedSiblings[idx - 1]!.id : null,
+      nextId:
+        idx < orderedSiblings.length - 1
+          ? orderedSiblings[idx + 1]!.id
+          : null,
     };
-  }, [siblings, sessionId]);
+  }, [orderedSiblings, sessionId]);
 
   if (!state) {
     return (
