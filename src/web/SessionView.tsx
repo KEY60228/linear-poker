@@ -267,17 +267,18 @@ function Header({
     <header className="session-header">
       <div>
         <h2>
-          <a href={meta.issue.url} target="_blank" rel="noreferrer">
-            {meta.issue.identifier}
-          </a>{" "}
-          {meta.issue.title}
-        </h2>
-        <p className="muted">
-          {meta.team.key} ·{" "}
           <a href={meta.project.url} target="_blank" rel="noreferrer">
             {meta.project.name}
+          </a>
+        </h2>
+        <p className="muted">
+          <a href={meta.issue.url} target="_blank" rel="noreferrer">
+            <strong>{meta.issue.identifier}</strong>
           </a>{" "}
-          · round #{currentRoundNo}
+          {meta.issue.title}
+        </p>
+        <p className="muted">
+          {meta.team.key} · round #{currentRoundNo}
         </p>
       </div>
       <div className="session-header-actions">
