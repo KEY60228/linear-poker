@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   api,
   NEED_INFO,
@@ -26,26 +26,25 @@ export function SessionView({
   const [referenceOpen, setReferenceOpen] = useState(false);
   const [siblings, setSiblings] = useState<SessionListItem[] | null>(null);
   const [siblingStatus, setSiblingStatus] = useState<SessionState["status"] | null>(null);
+  const siblingsLoadedRef = useRef(false);
 
-  // Snapshot the viewer's sessions in the same status bucket as this one, so
-  // prev/next walks across siblings the user would actually expect (voting
-  // sessions when looking at a voting session, finalized when finalized,
-  // etc.). Captured the first time we know the session status and frozen
-  // after — completing a vote doesn't shift the nav around mid-flow.
+  // Snapshot the viewer's sessions in the same status bucket as this one
+  // (voting / revealed / finalized). Captured the first time we know the
+  // session status and frozen after — completing a vote doesn't shift the
+  // nav around mid-flow. Use a ref to guard against React StrictMode's
+  // double-invoke of useEffect (the cleanup'd first run would otherwise
+  // throw away the in-flight fetch result).
   useEffect(() => {
-    if (siblingStatus !== null) return;
+    if (siblingsLoadedRef.current) return;
     if (!state) return;
+    siblingsLoadedRef.current = true;
     const status = state.status;
     setSiblingStatus(status);
-    let cancelled = false;
     api
       .listSessions("mine", status)
-      .then((rows) => !cancelled && setSiblings(rows))
+      .then(setSiblings)
       .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, [state?.status, siblingStatus]);
+  }, [state?.status]);
 
   useEffect(() => {
     let cancelled = false;
