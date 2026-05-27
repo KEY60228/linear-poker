@@ -277,10 +277,19 @@ export async function setProjectStatusPlanned(
 ): Promise<void> {
   const client = clientFor(accessToken);
   const statuses = await client.projectStatuses({ first: 100 });
-  const planned = statuses.nodes.find((s) => s.type === "planned");
-  if (!planned) {
+  const candidates = statuses.nodes.filter((s) => s.type === "planned");
+  if (candidates.length === 0) {
     throw new Error("no_planned_status_in_workspace");
   }
+  // Workspaces can have several statuses under the "planned" type bucket
+  // (e.g. the default "Planned" alongside a custom "Paused"). Prefer the
+  // one literally named "Planned" so we don't accidentally move the
+  // project to a pause-like sibling. Fall back to the lowest-positioned
+  // status in the bucket, which is the workspace's canonical primary.
+  const planned =
+    candidates.find((s) => s.name === "Planned") ??
+    candidates.find((s) => s.name.toLowerCase() === "planned") ??
+    [...candidates].sort((a, b) => a.position - b.position)[0]!;
   await client.updateProject(projectId, { statusId: planned.id });
 }
 
