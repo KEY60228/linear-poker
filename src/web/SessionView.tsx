@@ -65,6 +65,18 @@ export function SessionView({
     };
   }, [sessionId]);
 
+  // Where does this session sit in the viewer's voting backlog? Computed here
+  // so the hook ordering stays consistent across the early-return path below.
+  const { prevId, nextId } = useMemo(() => {
+    if (!siblings) return { prevId: null, nextId: null } as const;
+    const idx = siblings.findIndex((r) => r.id === sessionId);
+    if (idx < 0) return { prevId: null, nextId: null } as const;
+    return {
+      prevId: idx > 0 ? siblings[idx - 1]!.id : null,
+      nextId: idx < siblings.length - 1 ? siblings[idx + 1]!.id : null,
+    };
+  }, [siblings, sessionId]);
+
   if (!state) {
     return (
       <section>
@@ -143,16 +155,6 @@ export function SessionView({
   }
 
   // Where does this session sit in the viewer's voting backlog?
-  const { prevId, nextId } = useMemo(() => {
-    if (!siblings) return { prevId: null, nextId: null } as const;
-    const idx = siblings.findIndex((r) => r.id === sessionId);
-    if (idx < 0) return { prevId: null, nextId: null } as const;
-    return {
-      prevId: idx > 0 ? siblings[idx - 1]!.id : null,
-      nextId: idx < siblings.length - 1 ? siblings[idx + 1]!.id : null,
-    };
-  }, [siblings, sessionId]);
-
   return (
     <section className="session">
       <Header
