@@ -141,6 +141,8 @@ export interface SessionListItem {
   needInfoCount: number;
   isParticipant: boolean;
   isFacilitator: boolean;
+  /** True when the viewer is a participant and has voted in the current round. */
+  viewerHasVoted: boolean;
   finalEstimate: { value: string; finalizedAt: number } | null;
 }
 
@@ -191,20 +193,20 @@ export async function listSessionItems(
     (roundsRes.results ?? []).map((r) => [r.session_id, r.round_id]),
   );
 
-  let votes: { round_id: string; value: string }[] = [];
+  let votes: { round_id: string; user_id: string; value: string }[] = [];
   const roundIds = [...currentRoundIdBySession.values()];
   if (roundIds.length > 0) {
     const vph = roundIds.map(() => "?").join(",");
     const votesRes = await db
-      .prepare(`SELECT round_id, value FROM votes WHERE round_id IN (${vph})`)
+      .prepare(`SELECT round_id, user_id, value FROM votes WHERE round_id IN (${vph})`)
       .bind(...roundIds)
-      .all<{ round_id: string; value: string }>();
+      .all<{ round_id: string; user_id: string; value: string }>();
     votes = votesRes.results ?? [];
   }
-  const votesByRound = new Map<string, { value: string }[]>();
+  const votesByRound = new Map<string, { user_id: string; value: string }[]>();
   for (const v of votes) {
     const arr = votesByRound.get(v.round_id) ?? [];
-    arr.push({ value: v.value });
+    arr.push({ user_id: v.user_id, value: v.value });
     votesByRound.set(v.round_id, arr);
   }
 
@@ -239,6 +241,9 @@ export async function listSessionItems(
       };
     }
     const fin = finalBySession.get(s.id);
+    const isParticipant = sessionParts.some((p) => p.user_id === viewerForFlags);
+    const viewerHasVoted =
+      isParticipant && sessionVotes.some((v) => v.user_id === viewerForFlags);
     return {
       id: s.id,
       status: s.status,
@@ -250,8 +255,9 @@ export async function listSessionItems(
       participantCount: sessionParts.length,
       votedCount: sessionVotes.length,
       needInfoCount: sessionVotes.filter((v) => v.value === NEED_INFO_VALUE).length,
-      isParticipant: sessionParts.some((p) => p.user_id === viewerForFlags),
+      isParticipant,
       isFacilitator: s.facilitator_id === viewerForFlags,
+      viewerHasVoted,
       finalEstimate: fin
         ? { value: fin.value, finalizedAt: fin.finalized_at }
         : null,
