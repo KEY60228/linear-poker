@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   api,
   NEED_INFO,
   type ParticipantState,
   type ScaleOption,
+  type SessionListItem,
   type SessionState,
   type User,
   type Viewer,
@@ -23,6 +24,27 @@ export function SessionView({
   const [error, setError] = useState<string | null>(null);
   const [voting, setVoting] = useState(false);
   const [referenceOpen, setReferenceOpen] = useState(false);
+  const [siblings, setSiblings] = useState<SessionListItem[] | null>(null);
+  const [siblingStatus, setSiblingStatus] = useState<SessionState["status"] | null>(null);
+  const siblingsLoadedRef = useRef(false);
+
+  // Snapshot the viewer's sessions in the same status bucket as this one
+  // (voting / revealed / finalized). Captured the first time we know the
+  // session status and frozen after — completing a vote doesn't shift the
+  // nav around mid-flow. Use a ref to guard against React StrictMode's
+  // double-invoke of useEffect (the cleanup'd first run would otherwise
+  // throw away the in-flight fetch result).
+  useEffect(() => {
+    if (siblingsLoadedRef.current) return;
+    if (!state) return;
+    siblingsLoadedRef.current = true;
+    const status = state.status;
+    setSiblingStatus(status);
+    api
+      .listSessions("mine", status)
+      .then(setSiblings)
+      .catch(() => undefined);
+  }, [state?.status]);
 
   useEffect(() => {
     let cancelled = false;
@@ -48,6 +70,36 @@ export function SessionView({
       if (timer) clearTimeout(timer);
     };
   }, [sessionId]);
+
+  // Match the SessionList ordering for the current status bucket. The Voting
+  // tab is split into "vote needed" then "waiting"; other tabs are a single
+  // created_at DESC list, which is already how the API returns them.
+  const orderedSiblings = useMemo(() => {
+    if (!siblings) return null;
+    if (siblingStatus !== "voting") return siblings;
+    const needsVote: SessionListItem[] = [];
+    const waiting: SessionListItem[] = [];
+    for (const s of siblings) {
+      if (s.isParticipant && !s.viewerHasVoted) needsVote.push(s);
+      else waiting.push(s);
+    }
+    return [...needsVote, ...waiting];
+  }, [siblings, siblingStatus]);
+
+  // Where does this session sit in the viewer's voting backlog? Computed here
+  // so the hook ordering stays consistent across the early-return path below.
+  const { prevId, nextId } = useMemo(() => {
+    if (!orderedSiblings) return { prevId: null, nextId: null } as const;
+    const idx = orderedSiblings.findIndex((r) => r.id === sessionId);
+    if (idx < 0) return { prevId: null, nextId: null } as const;
+    return {
+      prevId: idx > 0 ? orderedSiblings[idx - 1]!.id : null,
+      nextId:
+        idx < orderedSiblings.length - 1
+          ? orderedSiblings[idx + 1]!.id
+          : null,
+    };
+  }, [orderedSiblings, sessionId]);
 
   if (!state) {
     return (
@@ -126,9 +178,13 @@ export function SessionView({
     }
   }
 
+  // Where does this session sit in the viewer's voting backlog?
   return (
     <section className="session">
-      <Header state={state} onOpenReference={() => setReferenceOpen(true)} />
+      <Header
+        state={state}
+        onOpenReference={() => setReferenceOpen(true)}
+      />
       {error && <p className="error">Error: {error}</p>}
       <ParticipantList participants={state.participants} status={state.status} viewerId={viewer?.id ?? null} />
       {state.status === "voting" && (
@@ -170,6 +226,24 @@ export function SessionView({
       )}
       {state.status === "finalized" && (
         <FinalizedView state={state} onUnfinalize={unfinalize} />
+      )}
+      {(prevId || nextId) && (
+        <nav className="session-nav-footer" aria-label="Voting session navigation">
+          <a
+            className={`session-nav-button ${prevId ? "" : "session-nav-disabled"}`}
+            href={prevId ? `#/sessions/${prevId}` : undefined}
+            aria-disabled={!prevId}
+          >
+            ← Prev
+          </a>
+          <a
+            className={`session-nav-button ${nextId ? "" : "session-nav-disabled"}`}
+            href={nextId ? `#/sessions/${nextId}` : undefined}
+            aria-disabled={!nextId}
+          >
+            Next →
+          </a>
+        </nav>
       )}
       <ReferenceDrawer
         open={referenceOpen}
