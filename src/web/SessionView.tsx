@@ -4,6 +4,7 @@ import {
   NEED_INFO,
   type ParticipantState,
   type ScaleOption,
+  type SessionListItem,
   type SessionState,
   type User,
   type Viewer,
@@ -23,6 +24,21 @@ export function SessionView({
   const [error, setError] = useState<string | null>(null);
   const [voting, setVoting] = useState(false);
   const [referenceOpen, setReferenceOpen] = useState(false);
+  const [siblings, setSiblings] = useState<SessionListItem[] | null>(null);
+
+  // Pull the viewer's voting-status sessions so we can show prev/next nav.
+  // We snapshot it once on mount so finishing a vote doesn't shift the nav
+  // around while the user is mid-flow.
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .listSessions("mine", "voting")
+      .then((rows) => !cancelled && setSiblings(rows))
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -126,9 +142,25 @@ export function SessionView({
     }
   }
 
+  // Where does this session sit in the viewer's voting backlog?
+  const { prevId, nextId } = useMemo(() => {
+    if (!siblings) return { prevId: null, nextId: null } as const;
+    const idx = siblings.findIndex((r) => r.id === sessionId);
+    if (idx < 0) return { prevId: null, nextId: null } as const;
+    return {
+      prevId: idx > 0 ? siblings[idx - 1]!.id : null,
+      nextId: idx < siblings.length - 1 ? siblings[idx + 1]!.id : null,
+    };
+  }, [siblings, sessionId]);
+
   return (
     <section className="session">
-      <Header state={state} onOpenReference={() => setReferenceOpen(true)} />
+      <Header
+        state={state}
+        onOpenReference={() => setReferenceOpen(true)}
+        prevId={prevId}
+        nextId={nextId}
+      />
       {error && <p className="error">Error: {error}</p>}
       <ParticipantList participants={state.participants} status={state.status} viewerId={viewer?.id ?? null} />
       {state.status === "voting" && (
@@ -184,9 +216,13 @@ export function SessionView({
 function Header({
   state,
   onOpenReference,
+  prevId,
+  nextId,
 }: {
   state: SessionState;
   onOpenReference: () => void;
+  prevId: string | null;
+  nextId: string | null;
 }) {
   const { meta, status, currentRoundNo } = state;
   return (
@@ -207,6 +243,26 @@ function Header({
         </p>
       </div>
       <div className="session-header-actions">
+        {(prevId || nextId) && (
+          <nav className="session-nav" aria-label="Voting session navigation">
+            <a
+              className={`session-nav-button ${prevId ? "" : "session-nav-disabled"}`}
+              href={prevId ? `#/sessions/${prevId}` : undefined}
+              aria-disabled={!prevId}
+              title={prevId ? "Previous voting session" : "No previous voting session"}
+            >
+              ← Prev
+            </a>
+            <a
+              className={`session-nav-button ${nextId ? "" : "session-nav-disabled"}`}
+              href={nextId ? `#/sessions/${nextId}` : undefined}
+              aria-disabled={!nextId}
+              title={nextId ? "Next voting session" : "No next voting session"}
+            >
+              Next →
+            </a>
+          </nav>
+        )}
         <button
           className="secondary-button"
           onClick={onOpenReference}

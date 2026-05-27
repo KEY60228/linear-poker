@@ -899,6 +899,30 @@ button:disabled {
   gap: 0.5rem;
 }
 
+.session-nav {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.session-nav-button {
+  padding: 0.3rem 0.6rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: inherit;
+  font-size: 0.875rem;
+  text-decoration: none;
+}
+
+.session-nav-button:hover {
+  background: rgba(94, 106, 210, 0.1);
+}
+
+.session-nav-disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
 .drawer-overlay {
   position: fixed;
   inset: 0;
