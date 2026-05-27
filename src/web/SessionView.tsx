@@ -184,6 +184,22 @@ export function SessionView({
     }
   }
 
+  async function deleteSession() {
+    if (
+      !window.confirm(
+        "このセッションを削除しますか？\n\nアプリ内の記録（参加者・投票結果・確定値・履歴）が完全に消えます。Linear 側の Issue / Project には触りません。\n\nこの操作は元に戻せません。",
+      )
+    ) {
+      return;
+    }
+    try {
+      await api.deleteSession(sessionId);
+      window.location.hash = "";
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
   // Where does this session sit in the viewer's voting backlog?
   return (
     <section className="session">
@@ -257,6 +273,15 @@ export function SessionView({
           </a>
         </nav>
       )}
+      <div className="session-danger-zone">
+        <button className="danger-button" onClick={deleteSession}>
+          Delete session
+        </button>
+        <span className="muted">
+          Removes this session's local record (votes, history). Linear is left
+          untouched.
+        </span>
+      </div>
       <ReferenceDrawer
         open={referenceOpen}
         teamId={state.meta.team.id}

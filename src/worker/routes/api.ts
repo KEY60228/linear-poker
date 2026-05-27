@@ -258,6 +258,19 @@ api.get("/sessions/:id", async (c) => {
   }
 });
 
+api.delete("/sessions/:id", async (c) => {
+  const id = c.req.param("id");
+  try {
+    await doStub(c, id).deleteSession(id);
+  } catch (e) {
+    if (e instanceof Error && e.message === "session_not_found") {
+      return c.json({ error: "not_found" }, 404);
+    }
+    throw e;
+  }
+  return c.json({ ok: true });
+});
+
 api.post("/sessions/:id/participants", async (c) => {
   const id = c.req.param("id");
   const { userId } = await c.req.json<{ userId: string }>();
