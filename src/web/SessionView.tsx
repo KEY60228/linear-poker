@@ -189,6 +189,7 @@ export function SessionView({
       <ParticipantList participants={state.participants} status={state.status} viewerId={viewer?.id ?? null} />
       {state.status === "voting" && (
         <ParticipantManager
+          key={sessionId}
           sessionId={sessionId}
           participants={state.participants}
           teamId={state.meta.team.id}
@@ -222,7 +223,12 @@ export function SessionView({
         </div>
       )}
       {state.status === "revealed" && (
-        <RevealedView state={state} onFinalize={finalize} onRevote={revote} />
+        <RevealedView
+          key={sessionId}
+          state={state}
+          onFinalize={finalize}
+          onRevote={revote}
+        />
       )}
       {state.status === "finalized" && (
         <FinalizedView state={state} onUnfinalize={unfinalize} />
