@@ -228,6 +228,30 @@ export class SessionDO extends DurableObject<Env> {
     ]);
   }
 
+  /**
+   * Permanently delete a session and all of its children. Used when the
+   * underlying Linear project has been cancelled or otherwise no longer
+   * matters. Does NOT touch Linear — just clears this app's local record.
+   * Allowed in any status.
+   */
+  async deleteSession(sessionId: string): Promise<void> {
+    await this.requireSession(sessionId);
+    const db = this.env.DB;
+    // Explicit deletes (rather than relying on FK CASCADE, which D1 may not
+    // have enabled) and in reverse-dependency order.
+    await db.batch([
+      db
+        .prepare(
+          "DELETE FROM votes WHERE round_id IN (SELECT id FROM rounds WHERE session_id = ?)",
+        )
+        .bind(sessionId),
+      db.prepare("DELETE FROM rounds WHERE session_id = ?").bind(sessionId),
+      db.prepare("DELETE FROM final_estimates WHERE session_id = ?").bind(sessionId),
+      db.prepare("DELETE FROM participants WHERE session_id = ?").bind(sessionId),
+      db.prepare("DELETE FROM sessions WHERE id = ?").bind(sessionId),
+    ]);
+  }
+
   async getState(sessionId: string, viewerUserId: string | null = null): Promise<SessionStateDTO> {
     const session = await this.requireSession(sessionId);
     return await this.buildStateDTO(session, viewerUserId);

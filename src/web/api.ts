@@ -307,6 +307,8 @@ export const api = {
       `/api/sessions/${encodeURIComponent(sessionId)}/unfinalize`,
       {},
     ),
+  deleteSession: (sessionId: string) =>
+    jsonDelete<{ ok: true }>(`/api/sessions/${encodeURIComponent(sessionId)}`),
   listGroups: (teamId: string) =>
     jsonGet<{ groups: ParticipantGroup[] }>(
       `/api/teams/${encodeURIComponent(teamId)}/groups`,
