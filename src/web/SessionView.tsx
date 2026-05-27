@@ -47,6 +47,12 @@ export function SessionView({
   }, [state?.status]);
 
   useEffect(() => {
+    // Clear stale state when navigating to a different session so children
+    // that snapshot off `state` on mount (e.g. RevealedView's selected
+    // value) don't briefly initialise from the previous session before the
+    // polling tick replaces it.
+    setState(null);
+    setError(null);
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
 
@@ -189,6 +195,7 @@ export function SessionView({
       <ParticipantList participants={state.participants} status={state.status} viewerId={viewer?.id ?? null} />
       {state.status === "voting" && (
         <ParticipantManager
+          key={sessionId}
           sessionId={sessionId}
           participants={state.participants}
           teamId={state.meta.team.id}
@@ -222,7 +229,12 @@ export function SessionView({
         </div>
       )}
       {state.status === "revealed" && (
-        <RevealedView state={state} onFinalize={finalize} onRevote={revote} />
+        <RevealedView
+          key={sessionId}
+          state={state}
+          onFinalize={finalize}
+          onRevote={revote}
+        />
       )}
       {state.status === "finalized" && (
         <FinalizedView state={state} onUnfinalize={unfinalize} />
