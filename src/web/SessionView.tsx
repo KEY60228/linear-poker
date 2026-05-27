@@ -160,8 +160,6 @@ export function SessionView({
       <Header
         state={state}
         onOpenReference={() => setReferenceOpen(true)}
-        prevId={prevId}
-        nextId={nextId}
       />
       {error && <p className="error">Error: {error}</p>}
       <ParticipantList participants={state.participants} status={state.status} viewerId={viewer?.id ?? null} />
@@ -205,6 +203,24 @@ export function SessionView({
       {state.status === "finalized" && (
         <FinalizedView state={state} onUnfinalize={unfinalize} />
       )}
+      {(prevId || nextId) && (
+        <nav className="session-nav-footer" aria-label="Voting session navigation">
+          <a
+            className={`session-nav-button ${prevId ? "" : "session-nav-disabled"}`}
+            href={prevId ? `#/sessions/${prevId}` : undefined}
+            aria-disabled={!prevId}
+          >
+            ← Prev
+          </a>
+          <a
+            className={`session-nav-button ${nextId ? "" : "session-nav-disabled"}`}
+            href={nextId ? `#/sessions/${nextId}` : undefined}
+            aria-disabled={!nextId}
+          >
+            Next →
+          </a>
+        </nav>
+      )}
       <ReferenceDrawer
         open={referenceOpen}
         teamId={state.meta.team.id}
@@ -218,13 +234,9 @@ export function SessionView({
 function Header({
   state,
   onOpenReference,
-  prevId,
-  nextId,
 }: {
   state: SessionState;
   onOpenReference: () => void;
-  prevId: string | null;
-  nextId: string | null;
 }) {
   const { meta, status, currentRoundNo } = state;
   return (
@@ -245,26 +257,6 @@ function Header({
         </p>
       </div>
       <div className="session-header-actions">
-        {(prevId || nextId) && (
-          <nav className="session-nav" aria-label="Voting session navigation">
-            <a
-              className={`session-nav-button ${prevId ? "" : "session-nav-disabled"}`}
-              href={prevId ? `#/sessions/${prevId}` : undefined}
-              aria-disabled={!prevId}
-              title={prevId ? "Previous voting session" : "No previous voting session"}
-            >
-              ← Prev
-            </a>
-            <a
-              className={`session-nav-button ${nextId ? "" : "session-nav-disabled"}`}
-              href={nextId ? `#/sessions/${nextId}` : undefined}
-              aria-disabled={!nextId}
-              title={nextId ? "Next voting session" : "No next voting session"}
-            >
-              Next →
-            </a>
-          </nav>
-        )}
         <button
           className="secondary-button"
           onClick={onOpenReference}

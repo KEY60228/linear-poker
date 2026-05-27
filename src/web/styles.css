@@ -899,9 +899,17 @@ button:disabled {
   gap: 0.5rem;
 }
 
-.session-nav {
+.session-nav,
+.session-nav-footer {
   display: flex;
   gap: 0.25rem;
+}
+
+.session-nav-footer {
+  justify-content: space-between;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
 }
 
 .session-nav-button {
