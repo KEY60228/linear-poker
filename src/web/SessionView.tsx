@@ -25,20 +25,27 @@ export function SessionView({
   const [voting, setVoting] = useState(false);
   const [referenceOpen, setReferenceOpen] = useState(false);
   const [siblings, setSiblings] = useState<SessionListItem[] | null>(null);
+  const [siblingStatus, setSiblingStatus] = useState<SessionState["status"] | null>(null);
 
-  // Pull the viewer's voting-status sessions so we can show prev/next nav.
-  // We snapshot it once on mount so finishing a vote doesn't shift the nav
-  // around while the user is mid-flow.
+  // Snapshot the viewer's sessions in the same status bucket as this one, so
+  // prev/next walks across siblings the user would actually expect (voting
+  // sessions when looking at a voting session, finalized when finalized,
+  // etc.). Captured the first time we know the session status and frozen
+  // after — completing a vote doesn't shift the nav around mid-flow.
   useEffect(() => {
+    if (siblingStatus !== null) return;
+    if (!state) return;
+    const status = state.status;
+    setSiblingStatus(status);
     let cancelled = false;
     api
-      .listSessions("mine", "voting")
+      .listSessions("mine", status)
       .then((rows) => !cancelled && setSiblings(rows))
       .catch(() => undefined);
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [state?.status, siblingStatus]);
 
   useEffect(() => {
     let cancelled = false;
@@ -65,11 +72,12 @@ export function SessionView({
     };
   }, [sessionId]);
 
-  // Match the SessionList Voting tab: "vote needed" rows first, then the
-  // "waiting for others" rows. Each bucket stays in created_at DESC order
-  // (the order the API already returned).
+  // Match the SessionList ordering for the current status bucket. The Voting
+  // tab is split into "vote needed" then "waiting"; other tabs are a single
+  // created_at DESC list, which is already how the API returns them.
   const orderedSiblings = useMemo(() => {
     if (!siblings) return null;
+    if (siblingStatus !== "voting") return siblings;
     const needsVote: SessionListItem[] = [];
     const waiting: SessionListItem[] = [];
     for (const s of siblings) {
@@ -77,7 +85,7 @@ export function SessionView({
       else waiting.push(s);
     }
     return [...needsVote, ...waiting];
-  }, [siblings]);
+  }, [siblings, siblingStatus]);
 
   // Where does this session sit in the viewer's voting backlog? Computed here
   // so the hook ordering stays consistent across the early-return path below.
