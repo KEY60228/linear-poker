@@ -1,7 +1,16 @@
 -- Allow 'needs_discussion' as a session status. SQLite can't ALTER a CHECK
 -- constraint in place, so we rebuild the sessions table with the wider set
--- of allowed values. D1 doesn't enforce foreign keys by default, so the
--- drop/rename is safe without juggling the child tables.
+-- of allowed values.
+--
+-- D1 enforces foreign keys, so dropping the old sessions table would cascade
+-- into participants / rounds / final_estimates (ON DELETE CASCADE) and wipe
+-- their rows. PRAGMA defer_foreign_keys = ON tells SQLite to skip FK checks
+-- until the end of the transaction, so the drop + rename works without
+-- collateral deletes. The new sessions table preserves the same `id`
+-- primary keys, so by the time the transaction commits the child rows are
+-- still valid against the renamed table.
+
+PRAGMA defer_foreign_keys = ON;
 
 CREATE TABLE sessions_new (
   id              TEXT PRIMARY KEY,
