@@ -40,7 +40,6 @@ export interface SessionStateDTO {
   currentRoundNo: number;
   meta: SessionMeta;
   facilitatorId: string;
-  needsDiscussion: boolean;
   participants: ParticipantStateDTO[];
   finalEstimate: FinalEstimateDTO | null;
 }
@@ -107,7 +106,7 @@ export class SessionDO extends DurableObject<Env> {
     seed: ParticipantSeed,
   ): Promise<void> {
     const session = await this.requireSession(sessionId);
-    if (session.status === "finalized") throw new Error("session_finalized");
+    if (session.status !== "voting") throw new Error("not_voting");
     await this.env.DB
       .prepare(
         "INSERT OR REPLACE INTO participants (session_id, user_id, display_name, email, added_at) VALUES (?, ?, ?, ?, ?)",
@@ -118,7 +117,7 @@ export class SessionDO extends DurableObject<Env> {
 
   async removeParticipant(sessionId: string, userId: string): Promise<void> {
     const session = await this.requireSession(sessionId);
-    if (session.status === "finalized") throw new Error("session_finalized");
+    if (session.status !== "voting") throw new Error("not_voting");
 
     const db = this.env.DB;
     const round = await getCurrentRound(db, sessionId, session.current_round_no);
@@ -141,7 +140,11 @@ export class SessionDO extends DurableObject<Env> {
 
   async vote(sessionId: string, userId: string, value: string): Promise<void> {
     const session = await this.requireSession(sessionId);
-    if (session.status !== "voting") throw new Error("not_voting");
+    // voting and needs_discussion both accept new / changed votes — they're
+    // both pre-reveal states.
+    if (session.status !== "voting" && session.status !== "needs_discussion") {
+      throw new Error("not_voting");
+    }
 
     const meta = parseMeta(session.meta_json);
     if (!isValidVoteValue(value, meta)) throw new Error("invalid_vote_value");
@@ -166,7 +169,9 @@ export class SessionDO extends DurableObject<Env> {
 
   async revealManually(sessionId: string): Promise<void> {
     const session = await this.requireSession(sessionId);
-    if (session.status !== "voting") return; // idempotent
+    if (session.status !== "voting" && session.status !== "needs_discussion") {
+      return; // idempotent
+    }
     await this.reveal(sessionId, session.current_round_no);
   }
 
@@ -265,24 +270,63 @@ export class SessionDO extends DurableObject<Env> {
     return s;
   }
 
+  /**
+   * Re-evaluate the auto-reveal transition. Runs after every vote / add /
+   * remove participant on a pre-reveal session.
+   *
+   * - voting + all voted + no need_info  → auto reveal
+   * - voting + all voted + need_info     → flip to needs_discussion
+   * - needs_discussion + all voted + no need_info  → auto reveal
+   * - needs_discussion + all voted + need_info     → stay (no-op)
+   * - needs_discussion + not all voted   → fall back to voting (a removed
+   *   non-voter or a newly-added participant invalidated the "all voted"
+   *   condition)
+   */
   private async maybeAutoReveal(sessionId: string): Promise<void> {
     const session = await this.requireSession(sessionId);
-    if (session.status !== "voting") return;
+    if (session.status !== "voting" && session.status !== "needs_discussion") return;
 
     const participants = await listParticipants(this.env.DB, sessionId);
-    if (participants.length === 0) return;
+    if (participants.length === 0) {
+      // No one to vote. If we somehow ended up in needs_discussion, fall back.
+      if (session.status === "needs_discussion") {
+        await this.setStatus(sessionId, "voting");
+      }
+      return;
+    }
 
     const round = await getCurrentRound(this.env.DB, sessionId, session.current_round_no);
     if (!round) return;
     const votes = await listVotesForRound(this.env.DB, round.id);
     const voterIds = new Set(votes.map((v) => v.user_id));
     const allVoted = participants.every((p) => voterIds.has(p.user_id));
-    if (!allVoted) return;
+
+    if (!allVoted) {
+      if (session.status === "needs_discussion") {
+        await this.setStatus(sessionId, "voting");
+      }
+      return;
+    }
 
     const hasNeedInfo = votes.some((v) => v.value === NEED_INFO_VALUE);
-    if (hasNeedInfo) return; // stays in voting with the "needs discussion" badge
+    if (hasNeedInfo) {
+      if (session.status !== "needs_discussion") {
+        await this.setStatus(sessionId, "needs_discussion");
+      }
+      return;
+    }
 
     await this.reveal(sessionId, session.current_round_no);
+  }
+
+  private async setStatus(
+    sessionId: string,
+    status: SessionStatus,
+  ): Promise<void> {
+    await this.env.DB
+      .prepare("UPDATE sessions SET status = ? WHERE id = ?")
+      .bind(status, sessionId)
+      .run();
   }
 
   private async reveal(sessionId: string, roundNo: number): Promise<void> {
@@ -314,17 +358,17 @@ export class SessionDO extends DurableObject<Env> {
       : [];
     const voteByUser = new Map(votes.map((v) => [v.user_id, v.value]));
 
-    const isVoting = session.status === "voting";
+    // voting and needs_discussion are both pre-reveal: other participants'
+    // values stay hidden, only the viewer's own value is returned. need_info
+    // is public (it drives the status flip to "needs_discussion").
+    const isPreReveal =
+      session.status === "voting" || session.status === "needs_discussion";
     const participantsDTO: ParticipantStateDTO[] = participants.map((p) => {
       const v = voteByUser.get(p.user_id) ?? null;
       const voted = v !== null;
       const votedNeedInfo = v === NEED_INFO_VALUE;
-      // During voting we hide other participants' values, but always surface
-      // the viewer's own vote so they can recall what they picked while
-      // waiting on others. need_info is public anyway (it drives the
-      // "needs discussion" badge).
       const isMe = viewerUserId !== null && p.user_id === viewerUserId;
-      const value = !isVoting || isMe ? v : null;
+      const value = !isPreReveal || isMe ? v : null;
       return {
         userId: p.user_id,
         displayName: p.display_name,
@@ -334,16 +378,6 @@ export class SessionDO extends DurableObject<Env> {
         value,
       };
     });
-
-    // "Needs discussion" only fires once everyone has voted and at least one
-    // of them picked need_info — that's the state where auto-reveal is
-    // actually paused and the manual reveal button is useful. While the
-    // round is still missing votes, a single early need_info isn't a
-    // discussion trigger yet.
-    const allVoted =
-      participantsDTO.length > 0 && participantsDTO.every((p) => p.voted);
-    const anyNeedInfo = participantsDTO.some((p) => p.votedNeedInfo);
-    const needsDiscussion = isVoting && allVoted && anyNeedInfo;
 
     const finalRow =
       session.status === "finalized"
@@ -363,7 +397,6 @@ export class SessionDO extends DurableObject<Env> {
       currentRoundNo: session.current_round_no,
       meta,
       facilitatorId: session.facilitator_id,
-      needsDiscussion,
       participants: participantsDTO,
       finalEstimate,
     };

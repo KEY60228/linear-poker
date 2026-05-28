@@ -8,6 +8,7 @@ import {
 
 const STATUS_TABS: { id: SessionListStatusFilter; label: string }[] = [
   { id: "voting", label: "Voting" },
+  { id: "needs_discussion", label: "Needs discussion" },
   { id: "revealed", label: "Revealed" },
   { id: "finalized", label: "Finalized" },
   { id: "all", label: "All" },
@@ -135,7 +136,9 @@ function SessionRow({ s }: { s: SessionListItem }) {
         className={`row session-row ${needsYourVote ? "session-row-urgent" : ""}`}
         href={`#/sessions/${s.id}`}
       >
-        <span className={`badge badge-${s.status}`}>{s.status}</span>
+        <span className={`badge badge-${s.status}`}>
+          {s.status === "needs_discussion" ? "discuss" : s.status}
+        </span>
         <span className="session-row-main">
           <span className="session-row-title">{s.project.name}</span>
           <span className="muted">
@@ -148,7 +151,7 @@ function SessionRow({ s }: { s: SessionListItem }) {
             {needsYourVote && (
               <span className="tag tag-urgent">vote needed</span>
             )}
-            {s.status === "voting" && (
+            {(s.status === "voting" || s.status === "needs_discussion") && (
               <>
                 <span className="tag tag-ok">
                   {s.votedCount}/{s.participantCount} voted

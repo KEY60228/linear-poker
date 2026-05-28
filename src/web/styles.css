@@ -354,6 +354,10 @@ button:disabled {
   color: #5e6ad2;
 }
 
+.badge-needs_discussion {
+  color: #b06b00;
+}
+
 .badge-revealed {
   color: #1c8c5e;
 }
