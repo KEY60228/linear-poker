@@ -168,7 +168,7 @@ api.get("/projects/:projectId/storypoint-issue", async (c) => {
 api.get("/sessions", async (c) => {
   const scope = c.req.query("scope") === "all" ? "all" : "mine";
   const statusParam = c.req.query("status");
-  const allowed: SessionStatus[] = ["voting", "revealed", "finalized"];
+  const allowed: SessionStatus[] = ["voting", "needs_discussion", "revealed", "finalized"];
   const status =
     statusParam && allowed.includes(statusParam as SessionStatus)
       ? [statusParam as SessionStatus]
