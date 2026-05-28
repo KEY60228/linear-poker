@@ -198,11 +198,13 @@ api.post("/sessions", async (c) => {
   }
 
   const accessToken = token(c);
-  const [team, project, issue, users] = await Promise.all([
+  const labelName = c.env.STORY_POINT_LABEL_NAME;
+  const [team, project, issue, users, storyPointDetection] = await Promise.all([
     getTeamSummary(accessToken, body.teamId),
     getProjectSummary(accessToken, body.projectId),
     getIssueSummary(accessToken, body.issueId),
     listUsersByIds(accessToken, body.participantIds),
+    findStoryPointIssue(accessToken, body.projectId, labelName),
   ]);
 
   if (team.scale.type === "notUsed") {
@@ -212,6 +214,7 @@ api.post("/sessions", async (c) => {
     return c.json({ error: "unknown_participants" }, 400);
   }
 
+  const duplicateLabel = (storyPointDetection?.duplicateCount ?? 0) > 0;
   const sessionId = randomId(16);
   const input: CreateSessionInput = {
     sessionId,
@@ -222,9 +225,9 @@ api.post("/sessions", async (c) => {
     meta: {
       team: { id: team.id, name: team.name, key: team.key, url: team.url },
       project: { id: project.id, name: project.name, url: project.url },
-      issue,
+      issue: { ...issue, duplicateLabel },
       scale: team.scale,
-      labelName: c.env.STORY_POINT_LABEL_NAME,
+      labelName,
     },
     participants: users.map((u) => ({
       userId: u.id,

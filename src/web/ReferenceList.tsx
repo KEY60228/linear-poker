@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api, type StoryPointReferenceGroup } from "./api";
 
 /**
@@ -72,6 +72,27 @@ export function ReferenceList({ teamId }: { teamId: string }) {
   const total = groups?.reduce((sum, g) => sum + g.issues.length, 0) ?? 0;
   const anyHasMore = groups?.some((g) => g.hasNextPage) ?? false;
 
+  // A project that shows up in more than one estimate bucket is almost
+  // always a mis-labelled issue ("duplicate label" in Wizard / Session
+  // terms — same project carrying two story-point issues with different
+  // estimates). Flag those rows so the user can clean them up in Linear.
+  const duplicateProjectIds = useMemo(() => {
+    if (!groups) return new Set<string>();
+    const counts = new Map<string, number>();
+    for (const g of groups) {
+      const seen = new Set<string>();
+      for (const i of g.issues) {
+        if (!i.project) continue;
+        if (seen.has(i.project.id)) continue;
+        seen.add(i.project.id);
+        counts.set(i.project.id, (counts.get(i.project.id) ?? 0) + 1);
+      }
+    }
+    return new Set(
+      [...counts.entries()].filter(([, n]) => n > 1).map(([id]) => id),
+    );
+  }, [groups]);
+
   return (
     <>
       {error && <p className="error">Error: {error}</p>}
@@ -96,29 +117,42 @@ export function ReferenceList({ teamId }: { teamId: string }) {
                 <p className="muted">No projects estimated at this point.</p>
               ) : (
                 <ul className="list">
-                  {g.issues.map((i) => (
-                    <li key={i.id}>
-                      <div className="row row-static">
-                        <span className="ref-main">
-                          {i.project ? (
-                            <a href={i.project.url} target="_blank" rel="noreferrer">
-                              {i.project.name}
-                            </a>
-                          ) : (
-                            <em className="muted">(no project)</em>
+                  {g.issues.map((i) => {
+                    const isDuplicate =
+                      i.project !== null &&
+                      duplicateProjectIds.has(i.project.id);
+                    return (
+                      <li key={i.id}>
+                        <div className="row row-static">
+                          <span className="ref-main">
+                            {i.project ? (
+                              <a href={i.project.url} target="_blank" rel="noreferrer">
+                                {i.project.name}
+                              </a>
+                            ) : (
+                              <em className="muted">(no project)</em>
+                            )}
+                          </span>
+                          {isDuplicate && (
+                            <span
+                              className="tag tag-info"
+                              title="This project also appears under a different estimate — probably mis-labelled"
+                            >
+                              duplicate label
+                            </span>
                           )}
-                        </span>
-                        <a
-                          className="muted ref-issue"
-                          href={i.url}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          {i.identifier}
-                        </a>
-                      </div>
-                    </li>
-                  ))}
+                          <a
+                            className="muted ref-issue"
+                            href={i.url}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            {i.identifier}
+                          </a>
+                        </div>
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
               {g.hasNextPage && (

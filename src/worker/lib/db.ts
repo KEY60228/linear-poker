@@ -11,6 +11,8 @@ export interface SessionMeta {
     title: string;
     url: string;
     estimate: number | null;
+    /** True when the project has >1 story-point-labelled issue. */
+    duplicateLabel?: boolean;
   };
   scale: EstimateScaleDTO;
   labelName: string;
