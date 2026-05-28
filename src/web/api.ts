@@ -45,7 +45,11 @@ export type SessionMeta = {
   labelName: string;
 };
 
-export type SessionStatus = "voting" | "revealed" | "finalized";
+export type SessionStatus =
+  | "voting"
+  | "needs_discussion"
+  | "revealed"
+  | "finalized";
 
 export type SessionListItem = {
   id: string;
@@ -126,7 +130,6 @@ export type SessionState = {
   currentRoundNo: number;
   meta: SessionMeta;
   facilitatorId: string;
-  needsDiscussion: boolean;
   participants: ParticipantState[];
   finalEstimate: FinalEstimate | null;
 };

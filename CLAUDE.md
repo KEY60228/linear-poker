@@ -38,10 +38,10 @@ wrangler.jsonc      # Cloudflare bindings + cron
 ## Domain rules (don't break these)
 
 - 1 session = 1 Linear Project = 1 StoryPoint Issue. The Issue is identified by the configurable label.
-- Session state machine: `voting → revealed (auto) → finalized (manual)`. Re-vote returns `revealed/voting → voting` with a new `round_no`.
+- Session state machine: `voting → (needs_discussion ↔ voting if roster changes) → revealed (auto or manual) → finalized (manual)`. Re-vote returns `revealed → voting` with a new `round_no`.
 - During `voting`: who voted is public; other participants' values stay hidden, but the viewer's own vote is always returned by `getState` so they can recall what they picked while waiting. After `revealed`: everything is public.
 - `need_info` is a valid vote value. It counts as "voted" for the all-voted check, and excludes the user from reminders.
-- **Auto-reveal requires zero `need_info` votes.** If anyone voted `need_info`, the session stays in `voting` with a "needs discussion" badge — no new status. Anyone can press a **manual reveal** button to escape, otherwise it waits for the `need_info` voter(s) to change their vote (which re-evaluates the auto-reveal condition).
+- **Auto-reveal requires zero `need_info` votes.** When every participant has voted but at least one of them picked `need_info`, the session flips to status `needs_discussion` (its own status row in the DB, its own tab in the list). Anyone can press a **manual reveal** button to escape; otherwise it waits for the `need_info` voter(s) to change their vote. If the roster changes (add/remove participant) while in `needs_discussion` and the "all voted" condition breaks, the status falls back to `voting`. Roster mutations are only allowed in `voting`, not `needs_discussion` — by then the discussion focus shouldn't be reshuffling who's in the room.
 - Reminders: JST 15:00 (cron `0 6 * * *` UTC), only for `voting` sessions, skip users who voted `need_info`.
 - **Slack notifications fire only on session start and the daily reminder.** Reveal and finalize stay in-app; do not post to Slack on those events.
 - **No Linear↔Slack user mapping.** Reminders embed Linear `displayName` as plain text — do not @-mention. Setup stays at `SLACK_WEBHOOK_URL` only; do not add Bot Token requirements without an explicit spec change.

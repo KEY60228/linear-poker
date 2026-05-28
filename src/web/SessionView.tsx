@@ -224,15 +224,16 @@ export function SessionView({
           }}
         />
       )}
-      {state.status === "voting" && isParticipant && (
-        <VotePad
-          state={state}
-          myVote={me?.value ?? null}
-          disabled={voting}
-          onVote={vote}
-        />
-      )}
-      {state.status === "voting" && state.needsDiscussion && (
+      {(state.status === "voting" || state.status === "needs_discussion") &&
+        isParticipant && (
+          <VotePad
+            state={state}
+            myVote={me?.value ?? null}
+            disabled={voting}
+            onVote={vote}
+          />
+        )}
+      {state.status === "needs_discussion" && (
         <div className="callout warning">
           <h3>Needs discussion</h3>
           <p>
@@ -326,7 +327,9 @@ function Header({
         >
           Reference
         </button>
-        <span className={`badge badge-${status}`}>{status}</span>
+        <span className={`badge badge-${status}`}>
+          {status === "needs_discussion" ? "discuss" : status}
+        </span>
       </div>
     </header>
   );
@@ -352,7 +355,7 @@ function ParticipantList({
               {me && <em className="muted"> (you)</em>}
             </span>
             <span className="vote-status">
-              {status === "voting" &&
+              {(status === "voting" || status === "needs_discussion") &&
                 (p.voted
                   ? p.votedNeedInfo
                     ? <span className="tag tag-info">need_info</span>
@@ -360,7 +363,7 @@ function ParticipantList({
                       ? <span className="tag tag-value">{p.value}</span>
                       : <span className="tag tag-ok">voted</span>
                   : <span className="tag tag-pending">pending</span>)}
-              {status !== "voting" && (
+              {(status === "revealed" || status === "finalized") && (
                 p.value === null
                   ? <span className="tag tag-pending">no vote</span>
                   : p.value === NEED_INFO
