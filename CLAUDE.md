@@ -57,5 +57,5 @@ wrangler.jsonc      # Cloudflare bindings + cron
 
 ## What's done vs not
 
-- **Done (v0.1–v0.3)**: OAuth + signed cookie sessions; team/project listing and StoryPoint issue detection; session creation; participant management; voting with auto-reveal + the need_info "needs discussion" pause + manual reveal; revealed-state stats (median / mean / mode / range) with a snap-to-scale finalize suggestion; finalize that writes the agreed estimate back to Linear and persists locally; re-vote that opens a fresh round.
-- **Not yet**: Slack notifications, the daily reminder cron, fallback UX for the StoryPoint label missing case, self-host docs polish. See README roadmap.
+- **Done (v0.1–v0.4)**: OAuth + signed cookie sessions; team/project listing and StoryPoint issue detection; session creation; participant management; voting with auto-reveal + the need_info "needs discussion" pause + manual reveal; revealed-state stats (median / mean / mode / range) with a snap-to-scale finalize suggestion; finalize that writes the agreed estimate back to Linear and persists locally; re-vote that opens a fresh round; Slack notifications on session start + JST 15:00 daily reminder digest via Cron Trigger.
+- **Not yet**: Fallback UX for the StoryPoint label missing case, self-host docs polish. See README roadmap.
