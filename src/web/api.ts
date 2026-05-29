@@ -40,6 +40,7 @@ export type SessionMeta = {
     title: string;
     url: string;
     estimate: number | null;
+    duplicateLabel?: boolean;
   };
   scale: EstimateScale;
   labelName: string;

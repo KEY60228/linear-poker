@@ -207,6 +207,20 @@ export function SessionView({
         state={state}
         onOpenReference={() => setReferenceOpen(true)}
       />
+      {state.meta.issue.duplicateLabel && (
+        <div className="callout warning">
+          <h3>Duplicate {state.meta.labelName} label</h3>
+          <p>
+            This project has more than one issue carrying the{" "}
+            <code>{state.meta.labelName}</code> label. The session is pinned to{" "}
+            <a href={state.meta.issue.url} target="_blank" rel="noreferrer">
+              <strong>{state.meta.issue.identifier}</strong>
+            </a>
+            , but the team may be using a different one as the canonical
+            story-point issue. Consider cleaning up the labels in Linear.
+          </p>
+        </div>
+      )}
       {error && <p className="error">Error: {error}</p>}
       <ParticipantList participants={state.participants} status={state.status} viewerId={viewer?.id ?? null} />
       {state.status === "voting" && (
