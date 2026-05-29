@@ -29,6 +29,7 @@ import {
   listParticipantGroups,
   updateParticipantGroup,
 } from "../lib/db";
+import { notifySessionStarted } from "../lib/slack";
 
 const api = new Hono<HonoEnv>();
 
@@ -245,6 +246,15 @@ api.post("/sessions", async (c) => {
     }
     throw e;
   }
+
+  c.executionCtx.waitUntil(
+    notifySessionStarted(c.env, {
+      sessionId,
+      projectName: project.name,
+      issueIdentifier: issue.identifier,
+    }),
+  );
+
   return c.json({ id: sessionId }, 201);
 });
 
