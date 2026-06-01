@@ -3,6 +3,7 @@ import type { HonoEnv } from "./env";
 import authRoutes from "./routes/auth";
 import apiRoutes from "./routes/api";
 import { readAppSession } from "./lib/session";
+import { runDailyReminder } from "./lib/reminder";
 
 export { SessionDO } from "./do/session";
 
@@ -23,7 +24,7 @@ app.all("*", (c) => c.env.ASSETS.fetch(c.req.raw));
 
 export default {
   fetch: app.fetch,
-  async scheduled(_event: ScheduledController, _env: HonoEnv["Bindings"], _ctx: ExecutionContext) {
-    // Daily reminder cron — wired in v0.4.
+  async scheduled(_event: ScheduledController, env: HonoEnv["Bindings"], ctx: ExecutionContext) {
+    ctx.waitUntil(runDailyReminder(env));
   },
 } satisfies ExportedHandler<HonoEnv["Bindings"]>;
