@@ -1,4 +1,4 @@
-import { LinearClient } from "@linear/sdk";
+import { LinearClient, LinearError, AuthenticationLinearError, LinearErrorType } from "@linear/sdk";
 
 const LINEAR_AUTHORIZE_URL = "https://linear.app/oauth/authorize";
 const LINEAR_TOKEN_URL = "https://api.linear.app/oauth/token";
@@ -56,6 +56,21 @@ export async function exchangeCodeForToken(input: {
 
 export function clientFor(accessToken: string): LinearClient {
   return new LinearClient({ accessToken });
+}
+
+/**
+ * True when an error from a Linear API call means our access token is no
+ * longer accepted (expired or revoked workspace-side). The app cookie/KV
+ * session can still be valid in that case, so the caller should normalize
+ * this to a 401 and let the SPA bounce the user to a fresh login instead
+ * of surfacing an opaque 500.
+ */
+export function isLinearAuthError(e: unknown): boolean {
+  if (e instanceof AuthenticationLinearError) return true;
+  if (e instanceof LinearError) {
+    return e.type === LinearErrorType.AuthenticationError || e.status === 401;
+  }
+  return false;
 }
 
 // ---- Domain DTOs returned by lib helpers --------------------------------

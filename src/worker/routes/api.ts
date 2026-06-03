@@ -8,6 +8,7 @@ import {
   getProjectSummary,
   getTeamSummary,
   getViewer,
+  isLinearAuthError,
   listBacklogProjects,
   listStoryPointIssuesByEstimate,
   listTeamMembers,
@@ -361,6 +362,7 @@ api.post("/sessions/:id/finalize", async (c) => {
   try {
     await updateIssueEstimate(token(c), state.meta.issue.id, Number(value));
   } catch (e) {
+    if (isLinearAuthError(e)) throw e; // → central handler → 401, re-login
     return c.json(
       { error: "linear_writeback_failed", detail: e instanceof Error ? e.message : String(e) },
       502,
@@ -369,6 +371,7 @@ api.post("/sessions/:id/finalize", async (c) => {
   try {
     await setProjectStatusPlanned(token(c), state.meta.project.id);
   } catch (e) {
+    if (isLinearAuthError(e)) throw e; // → central handler → 401, re-login
     return c.json(
       {
         error: "linear_project_status_update_failed",
