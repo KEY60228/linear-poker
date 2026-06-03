@@ -60,24 +60,30 @@ export async function notifySessionStarted(
   await postWebhook(env, `:bar_chart: Planning poker session started — ${sessionRef(env, params)}`);
 }
 
-export interface ReminderItem {
+export interface ReminderSessionRef {
   sessionId: string;
   projectName: string;
   issueIdentifier: string;
-  /** Pending voters' Linear `displayName`, plain text, no @-mention. */
-  pending: string[];
+}
+
+export interface ReminderUserBucket {
+  displayName: string;
+  sessions: ReminderSessionRef[];
 }
 
 export async function notifyDailyDigest(
   env: Env,
-  items: ReminderItem[],
+  buckets: ReminderUserBucket[],
 ): Promise<void> {
   if (!slackEnabled(env)) return;
-  if (items.length === 0) return;
-  const lines = items.map((it) => {
-    const who = it.pending.map(escMrkdwn).join(", ");
-    return `• ${sessionRef(env, it)} — ${who}`;
+  if (buckets.length === 0) return;
+  // Group by person, not by session — across many sessions one voter's
+  // pending list reads more naturally as a per-person checklist than as a
+  // session list that repeats the same names.
+  const blocks = buckets.map((b) => {
+    const lines = b.sessions.map((s) => `• ${sessionRef(env, s)}`);
+    return `*${escMrkdwn(b.displayName)}*\n${lines.join("\n")}`;
   });
-  const header = `:bar_chart: Planning poker reminder — ${items.length} session(s) awaiting votes`;
-  await postWebhook(env, `${header}\n${lines.join("\n")}`);
+  const header = `:bar_chart: Planning poker reminder — ${buckets.length} 人が未投票`;
+  await postWebhook(env, `${header}\n\n${blocks.join("\n\n")}`);
 }
