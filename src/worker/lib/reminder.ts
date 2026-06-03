@@ -1,18 +1,28 @@
 import type { Env } from "../env";
 import type { SessionMeta } from "./db";
-import { notifyDailyDigest, slackEnabled, type ReminderItem } from "./slack";
+import {
+  notifyDailyDigest,
+  slackEnabled,
+  type ReminderSessionRef,
+  type ReminderUserBucket,
+} from "./slack";
 
 // `voting` sessions only (NOT `needs_discussion`). Skip participants who
 // already voted, including `need_info` — a `need_info` vote IS a vote and
 // has a row in `votes`, so the "didn't vote yet" filter excludes them
-// naturally. If no participants are pending across all voting sessions,
-// no message is posted at all.
+// naturally. If nobody is pending across all voting sessions, no message
+// is posted at all.
+//
+// The digest is grouped per person, not per session: each user gets one
+// block listing the sessions they still need to vote on. Users are sorted
+// by displayName; each user's sessions are sorted by session.created_at
+// ascending so the oldest backlog floats to the top.
 export async function runDailyReminder(env: Env): Promise<void> {
   if (!slackEnabled(env)) return;
 
   const sessionsRes = await env.DB.prepare(
-    "SELECT id, meta_json FROM sessions WHERE status = 'voting'",
-  ).all<{ id: string; meta_json: string }>();
+    "SELECT id, meta_json, created_at FROM sessions WHERE status = 'voting'",
+  ).all<{ id: string; meta_json: string; created_at: number }>();
   const sessions = sessionsRes.results ?? [];
   if (sessions.length === 0) return;
 
@@ -57,7 +67,14 @@ export async function runDailyReminder(env: Env): Promise<void> {
       votedBySession.set(sid, set);
     }
   }
-  const items: ReminderItem[] = [];
+
+  // userId → bucket. Sessions inside the bucket carry created_at for
+  // stable per-user sorting; we strip it before handing off to slack.ts.
+  const userBuckets = new Map<
+    string,
+    { displayName: string; sessions: (ReminderSessionRef & { createdAt: number })[] }
+  >();
+
   for (const s of sessions) {
     const sessionParts = (partsRes.results ?? []).filter((p) => p.session_id === s.id);
     if (sessionParts.length === 0) continue;
@@ -71,13 +88,30 @@ export async function runDailyReminder(env: Env): Promise<void> {
     } catch {
       continue;
     }
-    items.push({
+    const ref = {
       sessionId: s.id,
       projectName: meta.project.name,
       issueIdentifier: meta.issue.identifier,
-      pending: pending.map((p) => p.display_name),
-    });
+      createdAt: s.created_at,
+    };
+    for (const p of pending) {
+      const bucket = userBuckets.get(p.user_id) ?? {
+        displayName: p.display_name,
+        sessions: [],
+      };
+      bucket.sessions.push(ref);
+      userBuckets.set(p.user_id, bucket);
+    }
   }
 
-  await notifyDailyDigest(env, items);
+  const buckets: ReminderUserBucket[] = [...userBuckets.values()]
+    .map((b) => ({
+      displayName: b.displayName,
+      sessions: [...b.sessions]
+        .sort((a, c) => a.createdAt - c.createdAt)
+        .map(({ createdAt: _createdAt, ...rest }) => rest),
+    }))
+    .sort((a, b) => a.displayName.localeCompare(b.displayName));
+
+  await notifyDailyDigest(env, buckets);
 }
