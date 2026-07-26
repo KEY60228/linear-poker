@@ -23,6 +23,7 @@ export function SessionView({
   const [state, setState] = useState<SessionState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [voting, setVoting] = useState(false);
+  const [refreshingMeta, setRefreshingMeta] = useState(false);
   const [referenceOpen, setReferenceOpen] = useState(false);
   const [siblings, setSiblings] = useState<SessionListItem[] | null>(null);
   const [siblingStatus, setSiblingStatus] = useState<SessionState["status"] | null>(null);
@@ -141,6 +142,21 @@ export function SessionView({
     }
   }
 
+  // Re-pull the project/issue titles from Linear in case they were renamed
+  // there after this session was created.
+  async function refreshMeta() {
+    setRefreshingMeta(true);
+    setError(null);
+    try {
+      await api.refreshMeta(sessionId);
+      await refresh();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setRefreshingMeta(false);
+    }
+  }
+
   async function reveal() {
     try {
       await api.reveal(sessionId);
@@ -206,6 +222,8 @@ export function SessionView({
       <Header
         state={state}
         onOpenReference={() => setReferenceOpen(true)}
+        onRefreshMeta={refreshMeta}
+        refreshingMeta={refreshingMeta}
       />
       {state.meta.issue.duplicateLabel && (
         <div className="callout warning">
@@ -310,9 +328,13 @@ export function SessionView({
 function Header({
   state,
   onOpenReference,
+  onRefreshMeta,
+  refreshingMeta,
 }: {
   state: SessionState;
   onOpenReference: () => void;
+  onRefreshMeta: () => void;
+  refreshingMeta: boolean;
 }) {
   const { meta, status, currentRoundNo } = state;
   return (
@@ -334,6 +356,14 @@ function Header({
         </p>
       </div>
       <div className="session-header-actions">
+        <button
+          className="secondary-button"
+          onClick={onRefreshMeta}
+          disabled={refreshingMeta}
+          title="Re-pull the project / issue titles from Linear"
+        >
+          {refreshingMeta ? "Syncing…" : "Sync from Linear"}
+        </button>
         <button
           className="secondary-button"
           onClick={onOpenReference}

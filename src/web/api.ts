@@ -277,6 +277,11 @@ export const api = {
   }) => jsonPost<{ id: string }>("/api/sessions", input),
   getSession: (id: string) =>
     jsonGet<SessionState>(`/api/sessions/${encodeURIComponent(id)}`),
+  refreshMeta: (sessionId: string) =>
+    jsonPost<{ meta: SessionMeta }>(
+      `/api/sessions/${encodeURIComponent(sessionId)}/refresh-meta`,
+      {},
+    ),
   addParticipant: (sessionId: string, userId: string) =>
     jsonPost<{ ok: true }>(
       `/api/sessions/${encodeURIComponent(sessionId)}/participants`,
