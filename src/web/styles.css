@@ -313,6 +313,16 @@ button:disabled {
   background: rgba(94, 106, 210, 0.12);
 }
 
+/* A project that can't be picked because a session already exists. */
+.row-locked {
+  opacity: 0.65;
+}
+
+.row-locked .tag {
+  margin-left: auto;
+  text-decoration: none;
+}
+
 /* --- Session view --- */
 
 .session {

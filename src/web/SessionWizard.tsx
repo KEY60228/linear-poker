@@ -50,7 +50,15 @@ export function SessionWizard({ viewer }: { viewer: Viewer | null }) {
 
   const [projects, setProjects] = useState<Project[] | null>(null);
   const [selectedProjectIds, setSelectedProjectIds] = useState<Set<string>>(new Set());
-  const [blockedProjectIds, setBlockedProjectIds] = useState<Set<string>>(new Set());
+  // projectId → id of an existing non-finalized session on that project.
+  // Such projects are shown in the picker but can't be selected — the
+  // backend keeps 1 active session per issue, so we surface a link to the
+  // existing one instead of letting the user walk the whole wizard only to
+  // be rejected at create time. Covers sessions owned by anyone, not just
+  // the viewer.
+  const [existingSessionByProject, setExistingSessionByProject] = useState<Map<string, string>>(
+    new Map(),
+  );
 
   const [projectIssues, setProjectIssues] = useState<Map<string, ProjectIssueState>>(new Map());
   const [labelName, setLabelName] = useState<string>("story-point");
@@ -102,26 +110,33 @@ export function SessionWizard({ viewer }: { viewer: Viewer | null }) {
     setSelectedProjectIds(new Set());
     setProjectIssues(new Map());
     setCreateResults(null);
-    setBlockedProjectIds(new Set());
+    setExistingSessionByProject(new Map());
     setStep("project");
     pushStep("project");
     setError(null);
     try {
-      // Fetch the backlog projects and the viewer's own sessions in parallel.
-      // Projects whose Linear project already has a session involving the
-      // viewer are hidden from the picker — they'd just create a duplicate.
-      const [projectsList, mySessions] = await Promise.all([
+      // Fetch backlog projects and all workspace sessions in parallel. A
+      // project that already has a non-finalized session (anyone's) can't
+      // host a new one — we flag it in the picker with a link to the
+      // existing session rather than hiding it.
+      const [projectsList, allSessions] = await Promise.all([
         api.backlogProjects(t.id),
-        api.listSessions("mine", "all").catch(() => []),
+        api.listSessions("all", "all").catch(() => []),
       ]);
       setProjects(projectsList);
-      setBlockedProjectIds(new Set(mySessions.map((s) => s.project.id)));
+      const byProject = new Map<string, string>();
+      for (const s of allSessions) {
+        if (s.status === "finalized") continue;
+        if (!byProject.has(s.project.id)) byProject.set(s.project.id, s.id);
+      }
+      setExistingSessionByProject(byProject);
     } catch (e) {
       setError(String(e));
     }
   }
 
   function toggleProject(p: Project) {
+    if (existingSessionByProject.has(p.id)) return; // locked — session exists
     setSelectedProjectIds((prev) => {
       const next = new Set(prev);
       if (next.has(p.id)) next.delete(p.id);
@@ -132,7 +147,7 @@ export function SessionWizard({ viewer }: { viewer: Viewer | null }) {
 
   function setAllProjects(value: boolean) {
     if (!projects) return;
-    const eligible = projects.filter((p) => !blockedProjectIds.has(p.id));
+    const eligible = projects.filter((p) => !existingSessionByProject.has(p.id));
     setSelectedProjectIds(value ? new Set(eligible.map((p) => p.id)) : new Set());
   }
 
@@ -300,7 +315,7 @@ export function SessionWizard({ viewer }: { viewer: Viewer | null }) {
         <ProjectList
           projects={projects}
           selectedIds={selectedProjectIds}
-          blockedIds={blockedProjectIds}
+          existingByProject={existingSessionByProject}
           onToggle={toggleProject}
           onSelectAll={() => setAllProjects(true)}
           onDeselectAll={() => setAllProjects(false)}
@@ -456,7 +471,7 @@ function TeamList({ teams, onPick }: { teams: Team[] | null; onPick: (t: Team) =
 function ProjectList({
   projects,
   selectedIds,
-  blockedIds,
+  existingByProject,
   onToggle,
   onSelectAll,
   onDeselectAll,
@@ -464,7 +479,7 @@ function ProjectList({
 }: {
   projects: Project[] | null;
   selectedIds: Set<string>;
-  blockedIds: Set<string>;
+  existingByProject: Map<string, string>;
   onToggle: (p: Project) => void;
   onSelectAll: () => void;
   onDeselectAll: () => void;
@@ -479,29 +494,40 @@ function ProjectList({
       </p>
     );
   }
-  const visible = projects.filter((p) => !blockedIds.has(p.id));
-  const hidden = projects.length - visible.length;
-  if (visible.length === 0) {
-    return (
-      <>
-        <p className="muted">
-          All Backlog projects in this team already have a session involving you.{" "}
-          <a href="#/">Open the sessions list</a> to continue them.
-        </p>
-      </>
-    );
-  }
+  const selectable = projects.filter((p) => !existingByProject.has(p.id));
+  const lockedCount = projects.length - selectable.length;
   return (
     <>
       <div className="bulk-controls">
         <span className="muted">
-          {selectedIds.size} / {visible.length} selected
+          {selectedIds.size} / {selectable.length} selected
         </span>
-        <button onClick={onSelectAll}>Select all</button>
-        <button onClick={onDeselectAll}>Deselect all</button>
+        <button onClick={onSelectAll} disabled={selectable.length === 0}>
+          Select all
+        </button>
+        <button onClick={onDeselectAll} disabled={selectedIds.size === 0}>
+          Deselect all
+        </button>
       </div>
       <ul className="list">
-        {visible.map((p) => {
+        {projects.map((p) => {
+          const existingSessionId = existingByProject.get(p.id);
+          if (existingSessionId) {
+            // Locked: a session already exists for this project. Show it,
+            // greyed out, with a link to that session instead of a checkbox.
+            return (
+              <li key={p.id}>
+                <div className="row row-static row-locked">
+                  <span aria-hidden="true">🔒</span>
+                  <span>{p.name}</span>
+                  {p.description && <em className="muted">{p.description}</em>}
+                  <a className="tag tag-info" href={`#/sessions/${existingSessionId}`}>
+                    session exists →
+                  </a>
+                </div>
+              </li>
+            );
+          }
           const picked = selectedIds.has(p.id);
           return (
             <li key={p.id}>
@@ -517,10 +543,10 @@ function ProjectList({
           );
         })}
       </ul>
-      {hidden > 0 && (
+      {lockedCount > 0 && (
         <p className="muted">
-          {hidden} project(s) hidden because you already have a session for them.{" "}
-          <a href="#/">Find them in the sessions list</a>.
+          {lockedCount} project(s) already have an active session and can't be
+          re-created. Open a linked session to continue it.
         </p>
       )}
       <p className="actions">
