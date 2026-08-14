@@ -2,6 +2,7 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "linear-poker",
   "main": "src/worker/index.ts",
+  "workers_dev": true,
   "compatibility_date": "2025-01-01",
   "compatibility_flags": ["nodejs_compat"],
   "assets": {
