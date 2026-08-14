@@ -1,3 +1,5 @@
+// Copy to wrangler.jsonc and fill in your own resource IDs.
+// See README.md "セットアップ" for the commands that create each resource.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "linear-poker",
@@ -31,24 +33,27 @@
     {
       "binding": "DB",
       "database_name": "linear_poker_db",
-      "database_id": "98450df4-8275-43fa-8935-14c975f944ac",
+      "database_id": "REPLACE_ME_WITH_D1_DATABASE_ID",
       "migrations_dir": "migrations"
     }
   ],
   "kv_namespaces": [
     {
       "binding": "TOKENS",
-      "id": "bfcadc8a5ac24a94954b10380b003683"
+      "id": "REPLACE_ME_WITH_TOKENS_KV_NAMESPACE_ID"
     },
     {
       "binding": "LINEAR_CACHE",
-      "id": "390cfa165c2442ca9ae9d969231ae107"
+      "id": "REPLACE_ME_WITH_LINEAR_CACHE_KV_NAMESPACE_ID"
     }
   ],
   "triggers": {
+    // Daily reminder. Cron runs in UTC — adjust to your timezone.
+    // Default: 06:00 UTC = 15:00 JST.
     "crons": ["0 6 * * *"]
   },
   "vars": {
+    // Issue label that identifies the StoryPoint Issue in each project.
     "STORY_POINT_LABEL_NAME": "StoryPointIssue"
   }
 }

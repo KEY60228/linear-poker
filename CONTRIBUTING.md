@@ -8,6 +8,7 @@ Linear Planning Poker への Issue / Pull Request を歓迎します。
 
 - Node.js 20+ / pnpm（バージョンは `package.json` の `packageManager` に従う）
 - Linear の OAuth アプリ（ローカル用に Redirect URL `http://localhost:8787/auth/linear/callback` を登録）
+- `wrangler.jsonc`（`wrangler.jsonc.example` をコピーして作成し、自分の Cloudflare リソース ID を設定）
 - `.dev.vars`（`.dev.vars.example` をコピーして作成。**コミットしないこと**）
 
 ```bash

@@ -57,7 +57,15 @@ Client ID / Client Secret は後の手順で使います。
 pnpm install
 ```
 
-### 3. Cloudflare リソースを作る
+### 3. Wrangler 設定と Cloudflare リソースを作る
+
+`wrangler.jsonc.example` を `wrangler.jsonc` にコピーします（`wrangler.jsonc` は自分のリソース ID を含むため Git 管理外です）。
+
+```bash
+cp wrangler.jsonc.example wrangler.jsonc
+```
+
+続けて Cloudflare リソースを作成し、出力された ID を `wrangler.jsonc` の `REPLACE_ME_...` に貼ります。
 
 ```bash
 # D1
