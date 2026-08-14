@@ -48,6 +48,6 @@
     "crons": ["0 6 * * *"]
   },
   "vars": {
-    "STORY_POINT_LABEL_NAME": "story-point"
+    "STORY_POINT_LABEL_NAME": "StoryPointIssue"
   }
 }
