@@ -81,6 +81,16 @@ pnpm dev
 
 ログインフロー全体は <http://localhost:8787> 側で完結する（OAuth コールバックは Worker 側に来る）。
 
+#### Cron（デイリーリマインダー）をローカルで動かす
+
+`wrangler dev` は `--test-scheduled` 付きで起動しているため、開発サーバ起動中に以下を叩くと scheduled ハンドラを手動実行できる。
+
+```bash
+curl "http://localhost:8787/__scheduled?cron=0+6+*+*+*"
+```
+
+`cron` パラメータには `wrangler.jsonc` の `triggers.crons` に登録した式（`0 6 * * *` = JST 15:00）を URL エンコードして渡す。
+
 ### 7. デプロイ
 
 ```bash
