@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "Async planning poker for Linear projects, self-hosted on Cloudflare Workers.",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "concurrently -k -n web,worker -c blue,magenta \"pnpm dev:web\" \"pnpm dev:worker\"",
