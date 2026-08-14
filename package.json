@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "concurrently -k -n web,worker -c blue,magenta \"pnpm dev:web\" \"pnpm dev:worker\"",
     "dev:web": "vite",
-    "dev:worker": "wrangler dev",
+    "dev:worker": "wrangler dev --test-scheduled",
     "build": "pnpm build:web && pnpm build:worker",
     "build:web": "vite build",
     "build:worker": "tsc --noEmit -p tsconfig.worker.json",
