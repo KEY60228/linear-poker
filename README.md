@@ -92,7 +92,7 @@ pnpm wrangler secret put SESSION_SECRET
 pnpm wrangler secret put APP_BASE_URL
 pnpm wrangler secret put SLACK_WEBHOOK_URL  # v0.4 以降で利用
 
-pnpm deploy
+pnpm run deploy
 ```
 
 ## ディレクトリ
