@@ -37,19 +37,9 @@ src/
 migrations/           # D1 スキーマ (sessions/participants/rounds/votes/final_estimates)
 ```
 
-## 変更の流れ
-
-1. 大きめの変更は着手前に Issue で方向性をすり合わせるのがおすすめです
-2. `main` からブランチを切って変更し、`pnpm typecheck` と `pnpm build` が通ることを確認する
-3. `main` に向けて Pull Request を作成する
-
-コミットメッセージは [Conventional Commits](https://www.conventionalcommits.org/) 形式（subject は日本語可）でお願いします。例: `feat(wizard): 既にセッションがある Project をロック表示にする`
-
-セッションの状態機械や通知ポリシーなど、仕様の前提に関わる変更は実装前に Issue で相談してください。
-
 ## バグ報告
 
-再現手順と実行環境（ローカル `wrangler dev` か本番デプロイか）を書いてもらえると助かります。トークンや `.dev.vars` の内容など、秘密情報を貼らないよう注意してください。
+再現手順と実行環境（ローカル `wrangler dev` か本番デプロイか）を書いてもらえると助かります。
 
 ## ライセンス
 
