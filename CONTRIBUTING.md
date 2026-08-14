@@ -16,6 +16,27 @@ pnpm db:migrate:local   # D1 マイグレーション（ローカル）
 pnpm dev                # Worker (8787) + Vite (5173)
 ```
 
+## リポジトリ構成
+
+```
+src/
+  worker/
+    index.ts          # Worker エントリ + Hono ルーティング
+    env.ts            # Bindings 型定義
+    routes/auth.ts    # /auth/linear, /auth/linear/callback, /auth/logout
+    routes/api.ts     # セッション操作の REST API
+    do/session.ts     # SessionDO（セッションの状態機械）
+    lib/linear.ts     # OAuth + LinearClient ラッパ
+    lib/session.ts    # Cookie + KV セッション
+    lib/crypto.ts     # HMAC 署名 / ランダム ID
+    lib/slack.ts      # Slack 通知
+    lib/reminder.ts   # デイリーリマインダー（Cron）
+    lib/cache.ts      # Linear API レスポンスの KV キャッシュ
+    lib/db.ts         # D1 アクセス
+  web/                # React + Vite SPA
+migrations/           # D1 スキーマ (sessions/participants/rounds/votes/final_estimates)
+```
+
 ## 変更の流れ
 
 1. Issue で提案・報告する（大きめの変更は着手前に方向性をすり合わせるのがおすすめです）
@@ -56,7 +77,7 @@ PR は 1 つの関心ごとに 1 つ、レビューしやすい粒度でお願�
 
 ドメインルールの全体像は [CLAUDE.md](./CLAUDE.md) と [docs/handoff.md](./docs/handoff.md) にまとまっています。特に以下は仕様として固定です。
 
-- 1 セッション = 1 Linear Project = 1 StoryPoint Issue
+- 1 セッション = 1 Linear Project = 1 StoryPoint Issue。対象 Issue は `STORY_POINT_LABEL_NAME` のラベル（デフォルト `StoryPointIssue`）で識別する
 - セッションの状態機械: `voting → (needs_discussion ↔ voting) → revealed → finalized`。再投票は `revealed → voting` で新しい `round_no` を開始する
 - 投票中は「誰が投票したか」のみ公開し、値は開票まで非公開（本人の投票値のみ本人に返す）
 - `need_info` は有効な投票値。全員投票済みの判定に含み、リマインダー対象から除外する

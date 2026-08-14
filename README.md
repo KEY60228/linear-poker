@@ -154,39 +154,6 @@ pnpm run deploy
 | `STORY_POINT_LABEL_NAME` | `wrangler.jsonc` の `vars` | StoryPoint Issue を識別するラベル名。デフォルト `StoryPointIssue` |
 | リマインダー時刻 | `wrangler.jsonc` の `triggers.crons` | デフォルト `0 6 * * *`（UTC 06:00 = JST 15:00）。Cron は UTC で解釈されるため、自分のタイムゾーンに合わせて変更してください |
 
-## ディレクトリ
-
-```
-src/
-  worker/
-    index.ts          # Worker エントリ + Hono ルーティング
-    env.ts            # Bindings 型定義
-    routes/auth.ts    # /auth/linear, /auth/linear/callback, /auth/logout
-    routes/api.ts     # セッション操作の REST API
-    do/session.ts     # SessionDO（セッションの状態機械）
-    lib/linear.ts     # OAuth + LinearClient ラッパ
-    lib/session.ts    # Cookie + KV セッション
-    lib/crypto.ts     # HMAC 署名 / ランダム ID
-    lib/slack.ts      # Slack 通知
-    lib/reminder.ts   # デイリーリマインダー（Cron）
-    lib/cache.ts      # Linear API レスポンスの KV キャッシュ
-    lib/db.ts         # D1 アクセス
-  web/                # React + Vite SPA
-migrations/           # D1 スキーマ (sessions/participants/rounds/votes/final_estimates)
-```
-
-## 設計メモ
-
-- 1 セッション = 1 Linear Project = 1 StoryPoint Issue を運用前提として固定
-- `STORY_POINT_LABEL_NAME` のラベル（デフォルト `StoryPointIssue`）で対象 Issue を識別
-- 投票値 `need_info` は「見積もれない、要詳細」を表す特殊選択肢。リマインダー対象から除外
-- 全員投票完了 **かつ `need_info` 投票者ゼロ** で自動開票。`need_info` がいる間は「議論待ち」ステータスになり、手動 reveal で脱出可能
-- Slack 通知は **セッション開始** と **リマインダー** のみ（開票・確定では通知しない）
-- 確定後 Linear に書き戻し（Issue Estimate + Project status を `Planned` に更新）。どちらも冪等で、部分失敗後のリトライが安全
-- 再投票は同 Issue 内で `round_no` をインクリメント
-
-詳細は [docs/handoff.md](./docs/handoff.md) を参照。
-
 ## コントリビュート
 
 Issue / Pull Request を歓迎します。開発の流れや規約は [CONTRIBUTING.md](./CONTRIBUTING.md) を参照してください。
