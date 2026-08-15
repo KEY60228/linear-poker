@@ -417,6 +417,56 @@ api.post("/sessions/:id/revote", async (c) => {
   return c.json({ ok: true });
 });
 
+// Re-sync the session's meta snapshot from Linear. The team name / project
+// title / issue title etc. are snapshotted at creation, so they go stale
+// when someone renames things in Linear. This re-fetches the display fields
+// and overwrites the snapshot, preserving the estimate scale and labelName
+// (which must not change mid-session) and the duplicateLabel flag.
+api.post("/sessions/:id/refresh-meta", async (c) => {
+  const id = c.req.param("id");
+  let state;
+  try {
+    state = await doStub(c, id).getState(id, viewerId(c));
+  } catch (e) {
+    if (e instanceof Error && e.message === "session_not_found") {
+      return c.json({ error: "not_found" }, 404);
+    }
+    throw e;
+  }
+
+  const accessToken = token(c);
+  let team, project, issue;
+  try {
+    [team, project, issue] = await Promise.all([
+      getTeamSummary(accessToken, state.meta.team.id),
+      getProjectSummary(accessToken, state.meta.project.id),
+      getIssueSummary(accessToken, state.meta.issue.id),
+    ]);
+  } catch (e) {
+    if (isLinearAuthError(e)) throw e; // → central handler → 401, re-login
+    return c.json(
+      { error: "linear_fetch_failed", detail: e instanceof Error ? e.message : String(e) },
+      502,
+    );
+  }
+
+  const newMeta = {
+    ...state.meta,
+    team: { ...state.meta.team, name: team.name, key: team.key, url: team.url },
+    project: { id: project.id, name: project.name, url: project.url },
+    issue: {
+      ...state.meta.issue,
+      identifier: issue.identifier,
+      title: issue.title,
+      url: issue.url,
+      estimate: issue.estimate,
+    },
+  };
+
+  await doStub(c, id).updateMeta(id, newMeta);
+  return c.json({ meta: newMeta });
+});
+
 // ---------- Participant groups ----------
 
 api.get("/teams/:teamId/groups", async (c) => {
