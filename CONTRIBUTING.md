@@ -1,47 +1,47 @@
-# コントリビューションガイド
+# Contributing
 
-Linear Planning Poker への Issue / Pull Request を歓迎します。
+Issues and Pull Requests to Linear Planning Poker are welcome.
 
-## 開発環境
+## Development environment
 
-セットアップ手順は [README.md](./README.md) の「セットアップ」を参照してください。ローカル開発には以下が必要です。
+See the Setup section in [README.md](./README.md). For local development you need:
 
-- Node.js 20+ / pnpm（バージョンは `package.json` の `packageManager` に従う）
-- Linear の OAuth アプリ（ローカル用に Redirect URL `http://localhost:8787/auth/linear/callback` を登録）
-- `wrangler.jsonc`（`wrangler.jsonc.example` をコピーして作成し、自分の Cloudflare リソース ID を設定）
-- `.dev.vars`（`.dev.vars.example` をコピーして作成。**コミットしないこと**）
+- Node.js 20+ / pnpm (use the version pinned in `packageManager` in `package.json`)
+- A Linear OAuth app (register `http://localhost:8787/auth/linear/callback` as a Redirect URL for local dev)
+- `wrangler.jsonc` (copy from `wrangler.jsonc.example` and fill in your own Cloudflare resource IDs)
+- `.dev.vars` (copy from `.dev.vars.example`; **never commit it**)
 
 ```bash
 pnpm install
-pnpm db:migrate:local   # D1 マイグレーション（ローカル）
+pnpm db:migrate:local   # D1 migrations (local)
 pnpm dev                # Worker (8787) + Vite (5173)
 ```
 
-## リポジトリ構成
+## Repository layout
 
 ```
 src/
   worker/
-    index.ts          # Worker エントリ + Hono ルーティング
-    env.ts            # Bindings 型定義
+    index.ts          # Worker entry + Hono routing
+    env.ts            # Bindings type definitions
     routes/auth.ts    # /auth/linear, /auth/linear/callback, /auth/logout
-    routes/api.ts     # セッション操作の REST API
-    do/session.ts     # SessionDO（セッションの状態機械）
-    lib/linear.ts     # OAuth + LinearClient ラッパ
-    lib/session.ts    # Cookie + KV セッション
-    lib/crypto.ts     # HMAC 署名 / ランダム ID
-    lib/slack.ts      # Slack 通知
-    lib/reminder.ts   # デイリーリマインダー（Cron）
-    lib/cache.ts      # Linear API レスポンスの KV キャッシュ
-    lib/db.ts         # D1 アクセス
+    routes/api.ts     # REST API for session operations
+    do/session.ts     # SessionDO (session state machine)
+    lib/linear.ts     # OAuth + LinearClient wrapper
+    lib/session.ts    # Cookie + KV sessions
+    lib/crypto.ts     # HMAC signing / random IDs
+    lib/slack.ts      # Slack notifications
+    lib/reminder.ts   # Daily reminder (cron)
+    lib/cache.ts      # KV cache for Linear API responses
+    lib/db.ts         # D1 access
   web/                # React + Vite SPA
-migrations/           # D1 スキーマ (sessions/participants/rounds/votes/final_estimates)
+migrations/           # D1 schema (sessions/participants/rounds/votes/final_estimates)
 ```
 
-## バグ報告
+## Bug reports
 
-再現手順と実行環境（ローカル `wrangler dev` か本番デプロイか）を書いてもらえると助かります。
+Please include reproduction steps and your environment (local `wrangler dev` or a production deployment). Be careful not to paste secrets such as tokens or the contents of `.dev.vars`.
 
-## ライセンス
+## License
 
-コントリビュートされたコードは、本リポジトリの [MIT ライセンス](./LICENSE)の下で公開されることに同意したものとみなします。
+By contributing, you agree that your contributions will be licensed under this repository's [MIT License](./LICENSE).

@@ -1,169 +1,171 @@
 # Linear Planning Poker
 
-非同期プランニングポーカーを Linear の Project に紐づけて行い、合意した Estimate を Linear に書き戻すセルフホスト型の Web サービス。Cloudflare Workers 上で動作する OSS です。
+Async planning poker tied to Linear Projects: vote asynchronously, agree on an estimate, and write it back to Linear. A self-hosted OSS web service that runs on Cloudflare Workers.
 
-## できること
+日本語版は [README.ja.md](./README.ja.md) を参照してください。
 
-- Linear の Project 単位でプランニングポーカーのセッションを作成
-- 参加者が非同期に投票。全員が投票すると自動で開票（誰が投票済みかは公開、値は開票まで非公開）
-- 「見積もれない・情報が足りない」を表す `need_info` 投票と、それに伴う「議論待ち」ステータス
-- 開票後は中央値 / 平均 / 最頻値 / レンジと、ワークスペースの Estimate スケールへスナップした確定候補を表示
-- 確定すると Linear の Estimate フィールドへ書き戻し、Project ステータスを `Planned` に更新
-- 再投票（同一セッション内で新しいラウンドを開始）
-- Slack 通知: セッション開始時と、未投票者へのデイリーリマインダー（デフォルト JST 15:00）
+## Features
 
-## アーキテクチャ
+- Create a planning-poker session per Linear Project
+- Participants vote asynchronously; the session auto-reveals once everyone has voted (who has voted is public, values stay hidden until reveal)
+- A `need_info` vote ("can't estimate, need details") and a corresponding "needs discussion" status
+- After reveal: median / mean / mode / range, plus a suggested final value snapped to your workspace's Estimate scale
+- Finalizing writes the estimate back to Linear's Estimate field and moves the Project status to `Planned`
+- Re-vote (start a new round within the same session)
+- Slack notifications: on session start, and a daily reminder for pending voters (default 15:00 JST)
+
+## Architecture
 
 - **Runtime**: Cloudflare Workers + [Hono](https://hono.dev)
-- **強整合ステート**: Durable Object（1 セッション = 1 DO）
-- **永続化**: D1（SQLite）
-- **トークン保管**: Workers KV（`TOKENS`）
-- **Linear API レスポンスキャッシュ**: Workers KV（`LINEAR_CACHE`、TTL 5 分）
-- **Cron**: Cloudflare Cron Trigger（リマインダー用）
-- **フロント**: React + Vite、ビルド成果物を Workers Assets で同居配信
-- **Linear API**: `@linear/sdk`（OAuth2 トークン）
+- **Strongly consistent state**: Durable Object (1 session = 1 DO)
+- **Persistence**: D1 (SQLite)
+- **Token storage**: Workers KV (`TOKENS`)
+- **Linear API response cache**: Workers KV (`LINEAR_CACHE`, 5-minute TTL)
+- **Cron**: Cloudflare Cron Trigger (for the daily reminder)
+- **Frontend**: React + Vite, built assets served alongside the Worker via Workers Assets
+- **Linear API**: `@linear/sdk` (OAuth2 tokens)
 
-## 前提
+## Prerequisites
 
-- [Cloudflare アカウント](https://dash.cloudflare.com/sign-up)（Workers 無料プランで動作します）
-- Linear ワークスペースの管理権限（OAuth アプリとラベルを作成するため）
+- A [Cloudflare account](https://dash.cloudflare.com/sign-up) (the Workers free plan is enough)
+- Admin access to your Linear workspace (to create an OAuth app and a label)
 - Node.js 20+ / [pnpm](https://pnpm.io)
 
-## セットアップ
+## Setup
 
-### 1. Linear 側の準備
+### 1. Prepare Linear
 
-#### StoryPoint ラベルと Issue
+#### StoryPoint label and Issue
 
-本サービスは「1 セッション = 1 Linear Project = 1 StoryPoint Issue」という運用を前提としています。見積もりの書き込み先となる Issue を、特定のラベルで識別します。
+This service assumes "1 session = 1 Linear Project = 1 StoryPoint Issue". The Issue that receives the estimate is identified by a specific label.
 
-1. Linear で Issue ラベルを作成する。名前はデフォルトで **`StoryPointIssue`**（`wrangler.jsonc` の `STORY_POINT_LABEL_NAME` で変更可能）
-2. ポーカー対象にしたい Project ごとに、見積もりを書き込む Issue を 1 つ用意し、このラベルを付ける
+1. Create an Issue label in Linear. The default name is **`StoryPointIssue`** (configurable via `STORY_POINT_LABEL_NAME` in `wrangler.jsonc`)
+2. For each Project you want to run poker on, prepare one Issue to hold the estimate and attach the label to it
 
-> 1 つの Project 内にラベル付き Issue が複数あると対象を特定できないため、Project あたり 1 Issue にしてください。
+> If a Project contains more than one labelled Issue, the target cannot be determined — keep it to one Issue per Project.
 
-#### OAuth アプリ
+#### OAuth application
 
-Linear ワークスペースの Settings → API → Applications で OAuth Application を作成し、Redirect URL に以下を登録します。
+In your Linear workspace, go to Settings → API → Applications, create an OAuth Application, and register the following Redirect URLs.
 
-- ローカル: `http://localhost:8787/auth/linear/callback`
-- 本番: `https://<your-deployment>.workers.dev/auth/linear/callback`（独自ドメインの場合はそのドメイン）
+- Local: `http://localhost:8787/auth/linear/callback`
+- Production: `https://<your-deployment>.workers.dev/auth/linear/callback` (or your custom domain)
 
-Client ID / Client Secret は後の手順で使います。
+You will need the Client ID / Client Secret in a later step.
 
-### 2. 依存をインストール
+### 2. Install dependencies
 
 ```bash
 pnpm install
 ```
 
-### 3. Wrangler 設定と Cloudflare リソースを作る
+### 3. Create the Wrangler config and Cloudflare resources
 
-`wrangler.jsonc.example` を `wrangler.jsonc` にコピーします（`wrangler.jsonc` は自分のリソース ID を含むため Git 管理外です）。
+Copy `wrangler.jsonc.example` to `wrangler.jsonc` (`wrangler.jsonc` contains your own resource IDs and is not tracked by Git).
 
 ```bash
 cp wrangler.jsonc.example wrangler.jsonc
 ```
 
-続けて Cloudflare リソースを作成し、出力された ID を `wrangler.jsonc` の `REPLACE_ME_...` に貼ります。
+Then create the Cloudflare resources and paste each generated ID over the `REPLACE_ME_...` placeholders in `wrangler.jsonc`.
 
 ```bash
 # D1
 pnpm wrangler d1 create linear_poker_db
-# 出力された database_id を wrangler.jsonc の d1_databases[0].database_id に貼る
+# Paste the database_id into d1_databases[0].database_id
 
 # KV (tokens)
 pnpm wrangler kv namespace create TOKENS
-# 出力された id を wrangler.jsonc の kv_namespaces（binding: TOKENS）の id に貼る
+# Paste the id into kv_namespaces (binding: TOKENS)
 
 # KV (linear api cache)
 pnpm wrangler kv namespace create LINEAR_CACHE
-# 出力された id を wrangler.jsonc の kv_namespaces（binding: LINEAR_CACHE）の id に貼る
+# Paste the id into kv_namespaces (binding: LINEAR_CACHE)
 ```
 
-### 4. マイグレーション
+### 4. Migrations
 
 ```bash
 pnpm db:migrate:local
-# 本番:
+# Production:
 pnpm db:migrate:remote
 ```
 
-### 5. ローカル環境変数
+### 5. Local environment variables
 
-`.dev.vars.example` を `.dev.vars` にコピーして埋めます。
+Copy `.dev.vars.example` to `.dev.vars` and fill it in.
 
 ```bash
 cp .dev.vars.example .dev.vars
 ```
 
-| 変数 | 説明 |
+| Variable | Description |
 | --- | --- |
-| `LINEAR_OAUTH_CLIENT_ID` | Linear OAuth アプリの Client ID |
-| `LINEAR_OAUTH_CLIENT_SECRET` | Linear OAuth アプリの Client Secret |
-| `LINEAR_OAUTH_REDIRECT_URI` | OAuth コールバック URL（ローカルは既定値のままで可） |
-| `SESSION_SECRET` | Cookie 署名用のランダム文字列 |
-| `APP_BASE_URL` | Slack 通知に埋め込むアプリの URL |
-| `SLACK_WEBHOOK_URL` | Slack Incoming Webhook の URL（空なら Slack 通知は無効） |
+| `LINEAR_OAUTH_CLIENT_ID` | Client ID of your Linear OAuth app |
+| `LINEAR_OAUTH_CLIENT_SECRET` | Client Secret of your Linear OAuth app |
+| `LINEAR_OAUTH_REDIRECT_URI` | OAuth callback URL (the default is fine for local dev) |
+| `SESSION_SECRET` | Random string used to sign cookies |
+| `APP_BASE_URL` | App URL embedded in Slack notifications |
+| `SLACK_WEBHOOK_URL` | Slack Incoming Webhook URL (leave empty to disable Slack notifications) |
 
-`SESSION_SECRET` は十分に長いランダム文字列を入れます:
+Use a sufficiently long random string for `SESSION_SECRET`:
 
 ```bash
 openssl rand -base64 48
 ```
 
-#### Slack 通知（任意）
+#### Slack notifications (optional)
 
-Slack 通知を使う場合は [Incoming Webhook](https://api.slack.com/messaging/webhooks) を作成し、その URL を `SLACK_WEBHOOK_URL` に設定します。通知はセッション開始時とデイリーリマインダーの 2 種類のみで、Bot Token や Linear↔Slack のユーザーマッピングは不要です（参加者名はプレーンテキストで埋め込まれ、@メンションはしません）。
+To enable Slack notifications, create an [Incoming Webhook](https://api.slack.com/messaging/webhooks) and set its URL as `SLACK_WEBHOOK_URL`. There are only two kinds of notifications — session start and the daily reminder — and no Bot Token or Linear↔Slack user mapping is required (participant names are embedded as plain text, no @-mentions).
 
-### 6. 開発サーバ
+### 6. Dev server
 
 ```bash
 pnpm dev
 ```
 
 - Worker: <http://localhost:8787>
-- フロント (Vite): <http://localhost:5173>（`/api` `/auth` は Worker にプロキシ）
+- Frontend (Vite): <http://localhost:5173> (`/api` and `/auth` are proxied to the Worker)
 
-ログインフロー全体は <http://localhost:8787> 側で完結します（OAuth コールバックは Worker 側に来る）。
+The whole login flow happens on <http://localhost:8787> (the OAuth callback lands on the Worker).
 
-#### Cron（デイリーリマインダー）をローカルで動かす
+#### Running the cron (daily reminder) locally
 
-`wrangler dev` は `--test-scheduled` 付きで起動しているため、開発サーバ起動中に以下を叩くと scheduled ハンドラを手動実行できます。
+`wrangler dev` starts with `--test-scheduled`, so while the dev server is running you can trigger the scheduled handler manually:
 
 ```bash
 curl "http://localhost:8787/__scheduled?cron=0+6+*+*+*"
 ```
 
-`cron` パラメータには `wrangler.jsonc` の `triggers.crons` に登録した式を URL エンコードして渡します。
+Pass the URL-encoded cron expression registered in `triggers.crons` of your `wrangler.jsonc`.
 
-### 7. デプロイ
+### 7. Deploy
 
 ```bash
-# 本番用シークレットを設定
+# Set production secrets
 pnpm wrangler secret put LINEAR_OAUTH_CLIENT_ID
 pnpm wrangler secret put LINEAR_OAUTH_CLIENT_SECRET
 pnpm wrangler secret put LINEAR_OAUTH_REDIRECT_URI
 pnpm wrangler secret put SESSION_SECRET
 pnpm wrangler secret put APP_BASE_URL
-pnpm wrangler secret put SLACK_WEBHOOK_URL  # Slack 通知を使う場合のみ
+pnpm wrangler secret put SLACK_WEBHOOK_URL  # only if you use Slack notifications
 
 pnpm run deploy
 ```
 
-デプロイ後、表示された workers.dev の URL を Linear OAuth アプリの Redirect URL（`https://.../auth/linear/callback`）と `LINEAR_OAUTH_REDIRECT_URI` / `APP_BASE_URL` に反映してください。
+After deploying, reflect the workers.dev URL in your Linear OAuth app's Redirect URL (`https://.../auth/linear/callback`) and in `LINEAR_OAUTH_REDIRECT_URI` / `APP_BASE_URL`.
 
-## 設定
+## Configuration
 
-| 設定 | 場所 | 説明 |
+| Setting | Where | Description |
 | --- | --- | --- |
-| `STORY_POINT_LABEL_NAME` | `wrangler.jsonc` の `vars` | StoryPoint Issue を識別するラベル名。デフォルト `StoryPointIssue` |
-| リマインダー時刻 | `wrangler.jsonc` の `triggers.crons` | デフォルト `0 6 * * *`（UTC 06:00 = JST 15:00）。Cron は UTC で解釈されるため、自分のタイムゾーンに合わせて変更してください |
+| `STORY_POINT_LABEL_NAME` | `vars` in `wrangler.jsonc` | Label name that identifies the StoryPoint Issue. Default: `StoryPointIssue` |
+| Reminder time | `triggers.crons` in `wrangler.jsonc` | Default `0 6 * * *` (06:00 UTC = 15:00 JST). Cron runs in UTC — adjust to your timezone |
 
-## コントリビュート
+## Contributing
 
-Issue / Pull Request を歓迎します。開発の流れや規約は [CONTRIBUTING.md](./CONTRIBUTING.md) を参照してください。
+Issues and Pull Requests are welcome. See [CONTRIBUTING.md](./CONTRIBUTING.md).
 
-## ライセンス
+## License
 
 [MIT](./LICENSE)
