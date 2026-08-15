@@ -171,7 +171,7 @@ export function SessionView({
   async function unfinalize() {
     if (
       !window.confirm(
-        "確定を取り消しますか？\n\nこの操作はアプリ内の記録だけを取り消します。Linear 側に書き戻した Estimate と Project status は元に戻りません。Linear 側で既に値が revert されているケースで、アプリ側の状態を追従させたい時に使ってください。",
+        "Revert this finalization?\n\nThis only removes the record inside this app. The Estimate and Project status already written to Linear will NOT be reverted. Use this when the values have been reverted on the Linear side and you want the app to catch up.",
       )
     ) {
       return;
@@ -187,7 +187,7 @@ export function SessionView({
   async function deleteSession() {
     if (
       !window.confirm(
-        "このセッションを削除しますか？\n\nアプリ内の記録（参加者・投票結果・確定値・履歴）が完全に消えます。Linear 側の Issue / Project には触りません。\n\nこの操作は元に戻せません。",
+        "Delete this session?\n\nAll in-app records (participants, votes, final estimates, history) will be permanently removed. The Linear Issue / Project will not be touched.\n\nThis cannot be undone.",
       )
     ) {
       return;
