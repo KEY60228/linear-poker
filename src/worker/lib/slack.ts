@@ -84,6 +84,6 @@ export async function notifyDailyDigest(
     const lines = b.sessions.map((s) => `• ${sessionRef(env, s)}`);
     return `*${escMrkdwn(b.displayName)}*\n${lines.join("\n")}`;
   });
-  const header = `:bar_chart: Planning poker reminder — ${buckets.length} 人が未投票`;
+  const header = `:bar_chart: Planning poker reminder — waiting on ${buckets.length} voter${buckets.length === 1 ? "" : "s"}`;
   await postWebhook(env, `${header}\n\n${blocks.join("\n\n")}`);
 }

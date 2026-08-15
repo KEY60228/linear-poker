@@ -1,5 +1,5 @@
 // Copy to wrangler.jsonc and fill in your own resource IDs.
-// See README.md "セットアップ" for the commands that create each resource.
+// See the Setup section in README.md for the commands that create each resource.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "linear-poker",

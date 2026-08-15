@@ -48,7 +48,7 @@ export function Groups() {
   }
 
   async function remove(g: ParticipantGroup) {
-    if (!window.confirm(`グループ「${g.name}」を削除しますか？`)) return;
+    if (!window.confirm(`Delete group "${g.name}"?`)) return;
     try {
       await api.deleteGroup(g.id);
       await refresh();
