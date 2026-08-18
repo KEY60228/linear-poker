@@ -7,7 +7,9 @@ const SELECTED_TEAM_KEY = "linear-poker:references-team";
 export function ReferenceScale() {
   const [teams, setTeams] = useState<Team[] | null>(null);
   const [teamId, setTeamId] = useState<string | null>(null);
-  const [labelName] = useState<string>("story-point");
+  // The backend's configured label name, learned from the references API
+  // response — never guessed client-side.
+  const [labelName, setLabelName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -33,9 +35,18 @@ export function ReferenceScale() {
         <div>
           <h2>Reference scale</h2>
           <p className="muted">
-            Projects whose <code>{labelName}</code> issue already has an estimate
-            in Linear, grouped by point. Use it as a yardstick when sizing a
-            new project.
+            {labelName !== null ? (
+              <>
+                Projects whose <code>{labelName}</code> issue already has an
+                estimate in Linear, grouped by point.
+              </>
+            ) : (
+              <>
+                Projects whose StoryPoint issue already has an estimate in
+                Linear, grouped by point.
+              </>
+            )}{" "}
+            Use it as a yardstick when sizing a new project.
           </p>
         </div>
         {teams && teams.length > 0 && (
@@ -55,7 +66,7 @@ export function ReferenceScale() {
         )}
       </header>
       {error && <p className="error">Error: {error}</p>}
-      {teamId && <ReferenceList teamId={teamId} />}
+      {teamId && <ReferenceList teamId={teamId} onLabelName={setLabelName} />}
     </section>
   );
 }
