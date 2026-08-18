@@ -41,6 +41,8 @@ export interface SessionStateDTO {
   meta: SessionMeta;
   facilitatorId: string;
   participants: ParticipantStateDTO[];
+  /** How many current-round votes are need_info. Aggregate only — it must not reveal who. */
+  needInfoCount: number;
   finalEstimate: FinalEstimateDTO | null;
 }
 
@@ -49,6 +51,7 @@ export interface ParticipantStateDTO {
   displayName: string;
   email: string;
   voted: boolean;
+  /** Pre-reveal this is only true for the viewer themself — who picked need_info stays hidden until reveal. */
   votedNeedInfo: boolean;
   /** Only populated when status !== "voting". null means this user didn't vote in the current round. */
   value: string | null;
@@ -359,15 +362,17 @@ export class SessionDO extends DurableObject<Env> {
     const voteByUser = new Map(votes.map((v) => [v.user_id, v.value]));
 
     // voting and needs_discussion are both pre-reveal: other participants'
-    // values stay hidden, only the viewer's own value is returned. need_info
-    // is public (it drives the status flip to "needs_discussion").
+    // values stay hidden — need_info included — and only the viewer's own
+    // value is returned. The status flip to "needs_discussion" only needs the
+    // aggregate count, so that's all we expose before reveal.
     const isPreReveal =
       session.status === "voting" || session.status === "needs_discussion";
+    const needInfoCount = votes.filter((v) => v.value === NEED_INFO_VALUE).length;
     const participantsDTO: ParticipantStateDTO[] = participants.map((p) => {
       const v = voteByUser.get(p.user_id) ?? null;
       const voted = v !== null;
-      const votedNeedInfo = v === NEED_INFO_VALUE;
       const isMe = viewerUserId !== null && p.user_id === viewerUserId;
+      const votedNeedInfo = (!isPreReveal || isMe) && v === NEED_INFO_VALUE;
       const value = !isPreReveal || isMe ? v : null;
       return {
         userId: p.user_id,
@@ -398,6 +403,7 @@ export class SessionDO extends DurableObject<Env> {
       meta,
       facilitatorId: session.facilitator_id,
       participants: participantsDTO,
+      needInfoCount,
       finalEstimate,
     };
   }

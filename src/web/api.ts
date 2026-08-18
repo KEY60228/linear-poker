@@ -115,6 +115,7 @@ export type ParticipantState = {
   displayName: string;
   email: string;
   voted: boolean;
+  /** Pre-reveal this is only true for the viewer themself. */
   votedNeedInfo: boolean;
   value: string | null;
 };
@@ -132,6 +133,8 @@ export type SessionState = {
   meta: SessionMeta;
   facilitatorId: string;
   participants: ParticipantState[];
+  /** Aggregate count of need_info votes in the current round. */
+  needInfoCount: number;
   finalEstimate: FinalEstimate | null;
 };
 
