@@ -251,7 +251,7 @@ export function SessionView({
         <div className="callout warning">
           <h3>Needs discussion</h3>
           <p>
-            Everyone has voted but at least one participant picked{" "}
+            Everyone has voted but {state.needInfoCount} participant(s) picked{" "}
             <code>need_info</code>, so auto-reveal is paused. They can change
             their vote, or anyone can press reveal below to escape and discuss
             what's known so far.
