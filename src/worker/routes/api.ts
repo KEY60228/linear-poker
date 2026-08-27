@@ -441,11 +441,13 @@ api.post("/sessions/:id/unfinalize", async (c) => {
 api.post("/sessions/:id/revote", async (c) => {
   const id = c.req.param("id");
   try {
-    await doStub(c, id).revote(id);
+    await doStub(c, id).revote(id, viewerId(c));
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     if (msg === "finalized") return c.json({ error: msg }, 409);
+    if (msg === "not_revealed") return c.json({ error: msg }, 409);
     if (msg === "finalize_in_progress") return c.json({ error: msg }, 409);
+    if (msg === "not_a_participant") return c.json({ error: msg }, 403);
     if (msg === "session_not_found") return c.json({ error: "not_found" }, 404);
     throw e;
   }

@@ -122,8 +122,8 @@ export class SessionDO extends DurableObject<Env> {
     return this.serialized(() => this.abortFinalizeImpl(sessionId));
   }
 
-  revote(sessionId: string): Promise<void> {
-    return this.serialized(() => this.revoteImpl(sessionId));
+  revote(sessionId: string, byUserId: string): Promise<void> {
+    return this.serialized(() => this.revoteImpl(sessionId, byUserId));
   }
 
   unfinalize(sessionId: string): Promise<void> {
@@ -319,12 +319,22 @@ export class SessionDO extends DurableObject<Env> {
     await this.ctx.storage.delete(FINALIZE_CLAIM_KEY);
   }
 
-  private async revoteImpl(sessionId: string): Promise<void> {
+  private async revoteImpl(sessionId: string, byUserId: string): Promise<void> {
     const session = await this.requireSession(sessionId);
     if (session.status === "finalized") throw new Error("finalized");
+    // The state machine defines re-vote as revealed → voting only. Accepting
+    // it mid-vote would silently orphan every ballot already cast this round.
+    if (session.status !== "revealed") throw new Error("not_revealed");
     // A finalize is mid-flight (Linear writes issued after beginFinalize):
     // opening a new round now would let Linear and the local record diverge.
     if (await this.activeFinalizeClaim()) throw new Error("finalize_in_progress");
+    const participants = await listParticipants(this.env.DB, sessionId);
+    if (
+      session.facilitator_id !== byUserId &&
+      !participants.some((p) => p.user_id === byUserId)
+    ) {
+      throw new Error("not_a_participant");
+    }
 
     const newRoundNo = session.current_round_no + 1;
     const newRoundId = crypto.randomUUID();
