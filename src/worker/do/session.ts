@@ -154,7 +154,20 @@ export class SessionDO extends DurableObject<Env> {
           .bind(input.sessionId, p.userId, p.displayName, p.email, now),
       );
     }
-    await db.batch(statements);
+    try {
+      await db.batch(statements);
+    } catch (e) {
+      // The pre-check above races across DO instances (each create runs in a
+      // DO keyed by its fresh session id). The partial unique index on
+      // sessions(issue_id) WHERE status != 'finalized' is the authoritative
+      // guard — translate its violation into the same error the pre-check
+      // raises.
+      if (isUniqueConstraintError(e)) {
+        const winner = await findActiveSessionForIssue(db, input.issueId);
+        throw new Error(`session_already_exists:${winner?.id ?? ""}`);
+      }
+      throw e;
+    }
   }
 
   private async addParticipantImpl(
@@ -283,10 +296,18 @@ export class SessionDO extends DurableObject<Env> {
     const session = await this.requireSession(sessionId);
     if (session.status !== "finalized") throw new Error("not_finalized");
     const db = this.env.DB;
-    await db.batch([
-      db.prepare("DELETE FROM final_estimates WHERE session_id = ?").bind(sessionId),
-      db.prepare("UPDATE sessions SET status = 'revealed' WHERE id = ?").bind(sessionId),
-    ]);
+    try {
+      await db.batch([
+        db.prepare("DELETE FROM final_estimates WHERE session_id = ?").bind(sessionId),
+        db.prepare("UPDATE sessions SET status = 'revealed' WHERE id = ?").bind(sessionId),
+      ]);
+    } catch (e) {
+      // Reopening would put a second active session on this issue (one was
+      // created after this one finalized) — the partial unique index rejects
+      // that, and so do we.
+      if (isUniqueConstraintError(e)) throw new Error("another_active_session_exists");
+      throw e;
+    }
   }
 
   /**
@@ -464,6 +485,10 @@ export class SessionDO extends DurableObject<Env> {
 
 function parseMeta(json: string): SessionMeta {
   return JSON.parse(json) as SessionMeta;
+}
+
+function isUniqueConstraintError(e: unknown): boolean {
+  return e instanceof Error && e.message.includes("UNIQUE constraint failed");
 }
 
 export function isValidVoteValue(value: string, meta: SessionMeta): boolean {

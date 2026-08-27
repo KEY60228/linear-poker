@@ -243,7 +243,16 @@ api.post("/sessions", async (c) => {
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     if (msg.startsWith("session_already_exists:")) {
-      return c.json({ error: "session_already_exists", existingSessionId: msg.split(":")[1] }, 409);
+      // The id can be empty when the winning session vanished between the
+      // constraint violation and the lookup — omit the field in that case.
+      const existingId = msg.slice("session_already_exists:".length);
+      return c.json(
+        {
+          error: "session_already_exists",
+          ...(existingId ? { existingSessionId: existingId } : {}),
+        },
+        409,
+      );
     }
     throw e;
   }
@@ -398,6 +407,7 @@ api.post("/sessions/:id/unfinalize", async (c) => {
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     if (msg === "not_finalized") return c.json({ error: msg }, 409);
+    if (msg === "another_active_session_exists") return c.json({ error: msg }, 409);
     if (msg === "session_not_found") return c.json({ error: "not_found" }, 404);
     throw e;
   }
