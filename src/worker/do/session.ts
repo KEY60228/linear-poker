@@ -12,6 +12,21 @@ import {
 
 export const NEED_INFO_VALUE = "need_info";
 
+/**
+ * A finalize in flight: claimed via beginFinalize before the caller's Linear
+ * writes, released by commitFinalize / abortFinalize. Stored in DO storage so
+ * it survives across the multiple RPCs of one finalize request. The TTL is a
+ * safety valve for a Worker that died mid-finalize and never released.
+ */
+interface FinalizeClaim {
+  byUserId: string;
+  value: string;
+  at: number;
+}
+
+const FINALIZE_CLAIM_KEY = "finalize_claim";
+const FINALIZE_CLAIM_TTL_MS = 2 * 60 * 1000;
+
 export interface ParticipantSeed {
   userId: string;
   displayName: string;
@@ -95,8 +110,16 @@ export class SessionDO extends DurableObject<Env> {
     return this.serialized(() => this.revealManuallyImpl(sessionId));
   }
 
-  finalize(sessionId: string, byUserId: string, value: string): Promise<void> {
-    return this.serialized(() => this.finalizeImpl(sessionId, byUserId, value));
+  beginFinalize(sessionId: string, byUserId: string, value: string): Promise<void> {
+    return this.serialized(() => this.beginFinalizeImpl(sessionId, byUserId, value));
+  }
+
+  commitFinalize(sessionId: string, byUserId: string, value: string): Promise<void> {
+    return this.serialized(() => this.commitFinalizeImpl(sessionId, byUserId, value));
+  }
+
+  abortFinalize(sessionId: string): Promise<void> {
+    return this.serialized(() => this.abortFinalizeImpl(sessionId));
   }
 
   revote(sessionId: string): Promise<void> {
@@ -248,11 +271,31 @@ export class SessionDO extends DurableObject<Env> {
   }
 
   /**
-   * Persist the agreed-upon estimate. Callers MUST write to Linear before
-   * calling this — the DO does not own the Linear write because it has no
-   * access to the requester's OAuth token.
+   * Claim the finalize before the caller writes to Linear. The claim blocks
+   * revote() for its lifetime, so the session can't slip out of "revealed"
+   * between the caller's Linear writes and commitFinalize(). The DO does not
+   * own the Linear writes itself because it has no access to the requester's
+   * OAuth token.
    */
-  private async finalizeImpl(sessionId: string, byUserId: string, value: string): Promise<void> {
+  private async beginFinalizeImpl(
+    sessionId: string,
+    byUserId: string,
+    value: string,
+  ): Promise<void> {
+    const session = await this.requireSession(sessionId);
+    if (session.status !== "revealed") throw new Error("not_revealed");
+    const meta = parseMeta(session.meta_json);
+    if (!isFinalizableValue(value, meta)) throw new Error("invalid_finalize_value");
+    if (await this.activeFinalizeClaim()) throw new Error("finalize_in_progress");
+    const claim: FinalizeClaim = { byUserId, value, at: Date.now() };
+    await this.ctx.storage.put(FINALIZE_CLAIM_KEY, claim);
+  }
+
+  /**
+   * Persist the agreed-upon estimate and release the claim. Callers MUST
+   * have written to Linear (after beginFinalize) before calling this.
+   */
+  private async commitFinalizeImpl(sessionId: string, byUserId: string, value: string): Promise<void> {
     const session = await this.requireSession(sessionId);
     if (session.status !== "revealed") throw new Error("not_revealed");
     const meta = parseMeta(session.meta_json);
@@ -268,11 +311,20 @@ export class SessionDO extends DurableObject<Env> {
         .bind(sessionId, value, byUserId, now),
       db.prepare("UPDATE sessions SET status = 'finalized' WHERE id = ?").bind(sessionId),
     ]);
+    await this.ctx.storage.delete(FINALIZE_CLAIM_KEY);
+  }
+
+  private async abortFinalizeImpl(sessionId: string): Promise<void> {
+    await this.requireSession(sessionId);
+    await this.ctx.storage.delete(FINALIZE_CLAIM_KEY);
   }
 
   private async revoteImpl(sessionId: string): Promise<void> {
     const session = await this.requireSession(sessionId);
     if (session.status === "finalized") throw new Error("finalized");
+    // A finalize is mid-flight (Linear writes issued after beginFinalize):
+    // opening a new round now would let Linear and the local record diverge.
+    if (await this.activeFinalizeClaim()) throw new Error("finalize_in_progress");
 
     const newRoundNo = session.current_round_no + 1;
     const newRoundId = crypto.randomUUID();
@@ -351,6 +403,17 @@ export class SessionDO extends DurableObject<Env> {
     const s = await getSession(this.env.DB, sessionId);
     if (!s) throw new Error("session_not_found");
     return s;
+  }
+
+  /** The current finalize claim, or null when absent or older than its TTL. */
+  private async activeFinalizeClaim(): Promise<FinalizeClaim | null> {
+    const claim = await this.ctx.storage.get<FinalizeClaim>(FINALIZE_CLAIM_KEY);
+    if (!claim) return null;
+    if (Date.now() - claim.at > FINALIZE_CLAIM_TTL_MS) {
+      await this.ctx.storage.delete(FINALIZE_CLAIM_KEY);
+      return null;
+    }
+    return claim;
   }
 
   /**
