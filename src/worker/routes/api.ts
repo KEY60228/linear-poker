@@ -300,18 +300,32 @@ api.post("/sessions/:id/participants", async (c) => {
   if (!userId) return c.json({ error: "missing_userId" }, 400);
   const [user] = await listUsersByIds(token(c), [userId]);
   if (!user) return c.json({ error: "unknown_user" }, 400);
-  await doStub(c, id).addParticipant(id, {
-    userId: user.id,
-    displayName: user.displayName,
-    email: user.email,
-  });
+  try {
+    await doStub(c, id).addParticipant(id, {
+      userId: user.id,
+      displayName: user.displayName,
+      email: user.email,
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg === "session_not_found") return c.json({ error: "not_found" }, 404);
+    if (msg === "not_voting") return c.json({ error: msg }, 409);
+    throw e;
+  }
   return c.json({ ok: true });
 });
 
 api.delete("/sessions/:id/participants/:userId", async (c) => {
   const id = c.req.param("id");
   const userId = c.req.param("userId");
-  await doStub(c, id).removeParticipant(id, userId);
+  try {
+    await doStub(c, id).removeParticipant(id, userId);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg === "session_not_found") return c.json({ error: "not_found" }, 404);
+    if (msg === "not_voting") return c.json({ error: msg }, 409);
+    throw e;
+  }
   return c.json({ ok: true });
 });
 
@@ -335,7 +349,14 @@ api.post("/sessions/:id/votes", async (c) => {
 
 api.post("/sessions/:id/reveal", async (c) => {
   const id = c.req.param("id");
-  await doStub(c, id).revealManually(id);
+  try {
+    await doStub(c, id).revealManually(id);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg === "session_not_found") return c.json({ error: "not_found" }, 404);
+    if (msg === "not_voting") return c.json({ error: msg }, 409);
+    throw e;
+  }
   return c.json({ ok: true });
 });
 
