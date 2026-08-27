@@ -58,9 +58,65 @@ export interface ParticipantStateDTO {
  * One Durable Object instance per planning-poker session. The DO is the sole
  * writer to D1 for its session, so concurrent votes / reveals / re-votes are
  * serialised through it.
+ *
+ * Serialisation is NOT automatic: the DO input gate only closes during DO
+ * *storage* operations, and every method here awaits D1 binding subrequests,
+ * during which other RPCs to the same instance would be delivered and
+ * interleave. Each public method therefore runs inside
+ * blockConcurrencyWhile(), which defers all other event delivery until the
+ * method completes.
  */
 export class SessionDO extends DurableObject<Env> {
-  async createSession(input: CreateSessionInput): Promise<void> {
+  /** Run `fn` with the input gate held so no other RPC can interleave. */
+  private serialized<T>(fn: () => Promise<T>): Promise<T> {
+    return this.ctx.blockConcurrencyWhile(fn);
+  }
+
+  createSession(input: CreateSessionInput): Promise<void> {
+    return this.serialized(() => this.createSessionImpl(input));
+  }
+
+  addParticipant(sessionId: string, seed: ParticipantSeed): Promise<void> {
+    return this.serialized(() => this.addParticipantImpl(sessionId, seed));
+  }
+
+  removeParticipant(sessionId: string, userId: string): Promise<void> {
+    return this.serialized(() => this.removeParticipantImpl(sessionId, userId));
+  }
+
+  vote(sessionId: string, userId: string, value: string): Promise<void> {
+    return this.serialized(() => this.voteImpl(sessionId, userId, value));
+  }
+
+  revealManually(sessionId: string): Promise<void> {
+    return this.serialized(() => this.revealManuallyImpl(sessionId));
+  }
+
+  finalize(sessionId: string, byUserId: string, value: string): Promise<void> {
+    return this.serialized(() => this.finalizeImpl(sessionId, byUserId, value));
+  }
+
+  revote(sessionId: string): Promise<void> {
+    return this.serialized(() => this.revoteImpl(sessionId));
+  }
+
+  unfinalize(sessionId: string): Promise<void> {
+    return this.serialized(() => this.unfinalizeImpl(sessionId));
+  }
+
+  deleteSession(sessionId: string): Promise<void> {
+    return this.serialized(() => this.deleteSessionImpl(sessionId));
+  }
+
+  getState(sessionId: string, viewerUserId: string | null = null): Promise<SessionStateDTO> {
+    // Reads take the gate too so a state snapshot can't observe a mutation
+    // half-applied across its multiple D1 queries.
+    return this.serialized(() => this.getStateImpl(sessionId, viewerUserId));
+  }
+
+  // ---- gated implementations -------------------------------------------
+
+  private async createSessionImpl(input: CreateSessionInput): Promise<void> {
     const db = this.env.DB;
     const existing = await findActiveSessionForIssue(db, input.issueId);
     if (existing) {
@@ -101,7 +157,7 @@ export class SessionDO extends DurableObject<Env> {
     await db.batch(statements);
   }
 
-  async addParticipant(
+  private async addParticipantImpl(
     sessionId: string,
     seed: ParticipantSeed,
   ): Promise<void> {
@@ -115,7 +171,7 @@ export class SessionDO extends DurableObject<Env> {
       .run();
   }
 
-  async removeParticipant(sessionId: string, userId: string): Promise<void> {
+  private async removeParticipantImpl(sessionId: string, userId: string): Promise<void> {
     const session = await this.requireSession(sessionId);
     if (session.status !== "voting") throw new Error("not_voting");
 
@@ -138,7 +194,7 @@ export class SessionDO extends DurableObject<Env> {
     await this.maybeAutoReveal(sessionId);
   }
 
-  async vote(sessionId: string, userId: string, value: string): Promise<void> {
+  private async voteImpl(sessionId: string, userId: string, value: string): Promise<void> {
     const session = await this.requireSession(sessionId);
     // voting and needs_discussion both accept new / changed votes — they're
     // both pre-reveal states.
@@ -167,7 +223,7 @@ export class SessionDO extends DurableObject<Env> {
     await this.maybeAutoReveal(sessionId);
   }
 
-  async revealManually(sessionId: string): Promise<void> {
+  private async revealManuallyImpl(sessionId: string): Promise<void> {
     const session = await this.requireSession(sessionId);
     if (session.status !== "voting" && session.status !== "needs_discussion") {
       return; // idempotent
@@ -180,7 +236,7 @@ export class SessionDO extends DurableObject<Env> {
    * calling this — the DO does not own the Linear write because it has no
    * access to the requester's OAuth token.
    */
-  async finalize(sessionId: string, byUserId: string, value: string): Promise<void> {
+  private async finalizeImpl(sessionId: string, byUserId: string, value: string): Promise<void> {
     const session = await this.requireSession(sessionId);
     if (session.status !== "revealed") throw new Error("not_revealed");
     const meta = parseMeta(session.meta_json);
@@ -198,7 +254,7 @@ export class SessionDO extends DurableObject<Env> {
     ]);
   }
 
-  async revote(sessionId: string): Promise<void> {
+  private async revoteImpl(sessionId: string): Promise<void> {
     const session = await this.requireSession(sessionId);
     if (session.status === "finalized") throw new Error("finalized");
 
@@ -223,7 +279,7 @@ export class SessionDO extends DurableObject<Env> {
    * the case where Linear's side (estimate or project status) has been
    * reverted externally and our local record needs to follow suit.
    */
-  async unfinalize(sessionId: string): Promise<void> {
+  private async unfinalizeImpl(sessionId: string): Promise<void> {
     const session = await this.requireSession(sessionId);
     if (session.status !== "finalized") throw new Error("not_finalized");
     const db = this.env.DB;
@@ -239,7 +295,7 @@ export class SessionDO extends DurableObject<Env> {
    * matters. Does NOT touch Linear — just clears this app's local record.
    * Allowed in any status.
    */
-  async deleteSession(sessionId: string): Promise<void> {
+  private async deleteSessionImpl(sessionId: string): Promise<void> {
     await this.requireSession(sessionId);
     const db = this.env.DB;
     // Explicit deletes (rather than relying on FK CASCADE, which D1 may not
@@ -257,7 +313,10 @@ export class SessionDO extends DurableObject<Env> {
     ]);
   }
 
-  async getState(sessionId: string, viewerUserId: string | null = null): Promise<SessionStateDTO> {
+  private async getStateImpl(
+    sessionId: string,
+    viewerUserId: string | null,
+  ): Promise<SessionStateDTO> {
     const session = await this.requireSession(sessionId);
     return await this.buildStateDTO(session, viewerUserId);
   }
