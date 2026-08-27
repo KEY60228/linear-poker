@@ -70,7 +70,8 @@ export type SessionListItem = {
 };
 
 export type SessionListScope = "mine" | "all";
-export type SessionListStatusFilter = SessionStatus | "all";
+/** "active" expands server-side to every non-finalized status. */
+export type SessionListStatusFilter = SessionStatus | "active" | "all";
 
 export type StoryPointReference = {
   id: string;
