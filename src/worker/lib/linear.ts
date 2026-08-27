@@ -8,7 +8,8 @@ export const LINEAR_SCOPES = ["read", "write"] as const;
 export interface LinearTokenResponse {
   access_token: string;
   refresh_token?: string;
-  expires_in: number;
+  /** Seconds until the access token expires. May be absent depending on the OAuth app config. */
+  expires_in?: number;
   scope: string;
   token_type: string;
 }
@@ -50,6 +51,28 @@ export async function exchangeCodeForToken(input: {
   });
   if (!res.ok) {
     throw new Error(`Linear token exchange failed: ${res.status} ${await res.text()}`);
+  }
+  return (await res.json()) as LinearTokenResponse;
+}
+
+export async function refreshAccessToken(input: {
+  clientId: string;
+  clientSecret: string;
+  refreshToken: string;
+}): Promise<LinearTokenResponse> {
+  const body = new URLSearchParams({
+    client_id: input.clientId,
+    client_secret: input.clientSecret,
+    grant_type: "refresh_token",
+    refresh_token: input.refreshToken,
+  });
+  const res = await fetch(LINEAR_TOKEN_URL, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body,
+  });
+  if (!res.ok) {
+    throw new Error(`Linear token refresh failed: ${res.status} ${await res.text()}`);
   }
   return (await res.json()) as LinearTokenResponse;
 }

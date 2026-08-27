@@ -52,13 +52,12 @@ auth.get("/linear/callback", async (c) => {
   const linear = clientFor(token.access_token);
   const viewer = await linear.viewer;
 
-  await createAppSession(
-    c,
-    viewer.id,
-    token.access_token,
-    token.refresh_token,
-    Date.now() + token.expires_in * 1000,
-  );
+  // expires_in may be absent depending on the OAuth app config; store null
+  // (meaning "no expiry info, never refresh") instead of NaN.
+  const expiresAt =
+    typeof token.expires_in === "number" ? Date.now() + token.expires_in * 1000 : null;
+
+  await createAppSession(c, viewer.id, token.access_token, token.refresh_token, expiresAt);
 
   return c.redirect("/", 302);
 });
