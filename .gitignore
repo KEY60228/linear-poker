@@ -8,3 +8,6 @@ dist
 .DS_Store
 coverage
 *.tsbuildinfo
+
+# Local wrangler config (copy from wrangler.jsonc.example)
+wrangler.jsonc

@@ -243,7 +243,16 @@ api.post("/sessions", async (c) => {
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     if (msg.startsWith("session_already_exists:")) {
-      return c.json({ error: "session_already_exists", existingSessionId: msg.split(":")[1] }, 409);
+      // The id can be empty when the winning session vanished between the
+      // constraint violation and the lookup — omit the field in that case.
+      const existingId = msg.slice("session_already_exists:".length);
+      return c.json(
+        {
+          error: "session_already_exists",
+          ...(existingId ? { existingSessionId: existingId } : {}),
+        },
+        409,
+      );
     }
     throw e;
   }
@@ -355,13 +364,36 @@ api.post("/sessions/:id/finalize", async (c) => {
     return c.json({ error: "invalid_finalize_value" }, 400);
   }
 
-  // Linear writes first — if any of them fails we leave the session as
-  // "revealed" so the user can retry. Both Linear ops are idempotent, so a
-  // retry after a partial success (estimate written, project status pending)
-  // is safe.
+  // Claim the finalize before touching Linear. The claim blocks revote()
+  // until commit/abort, so the session can't slip back to "voting" between
+  // our Linear writes and the local record — without it, Linear would end up
+  // updated while the app shows a new round with no final estimate.
+  try {
+    await doStub(c, id).beginFinalize(id, viewerId(c), value);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg === "not_revealed") return c.json({ error: msg }, 409);
+    if (msg === "invalid_finalize_value") return c.json({ error: msg }, 400);
+    if (msg === "finalize_in_progress") return c.json({ error: msg }, 409);
+    if (msg === "session_not_found") return c.json({ error: "not_found" }, 404);
+    throw e;
+  }
+
+  // Linear writes next — if any of them fails we release the claim and leave
+  // the session as "revealed" so the user can retry. Both Linear ops are
+  // idempotent, so a retry after a partial success (estimate written, project
+  // status pending) is safe.
+  const releaseClaim = async () => {
+    try {
+      await doStub(c, id).abortFinalize(id);
+    } catch {
+      // The claim expires on its own TTL; failing to release is not fatal.
+    }
+  };
   try {
     await updateIssueEstimate(token(c), state.meta.issue.id, Number(value));
   } catch (e) {
+    await releaseClaim();
     if (isLinearAuthError(e)) throw e; // → central handler → 401, re-login
     return c.json(
       { error: "linear_writeback_failed", detail: e instanceof Error ? e.message : String(e) },
@@ -371,6 +403,7 @@ api.post("/sessions/:id/finalize", async (c) => {
   try {
     await setProjectStatusPlanned(token(c), state.meta.project.id);
   } catch (e) {
+    await releaseClaim();
     if (isLinearAuthError(e)) throw e; // → central handler → 401, re-login
     return c.json(
       {
@@ -381,7 +414,7 @@ api.post("/sessions/:id/finalize", async (c) => {
     );
   }
   try {
-    await doStub(c, id).finalize(id, viewerId(c), value);
+    await doStub(c, id).commitFinalize(id, viewerId(c), value);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     if (msg === "not_revealed") return c.json({ error: msg }, 409);
@@ -398,6 +431,7 @@ api.post("/sessions/:id/unfinalize", async (c) => {
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     if (msg === "not_finalized") return c.json({ error: msg }, 409);
+    if (msg === "another_active_session_exists") return c.json({ error: msg }, 409);
     if (msg === "session_not_found") return c.json({ error: "not_found" }, 404);
     throw e;
   }
@@ -407,10 +441,13 @@ api.post("/sessions/:id/unfinalize", async (c) => {
 api.post("/sessions/:id/revote", async (c) => {
   const id = c.req.param("id");
   try {
-    await doStub(c, id).revote(id);
+    await doStub(c, id).revote(id, viewerId(c));
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     if (msg === "finalized") return c.json({ error: msg }, 409);
+    if (msg === "not_revealed") return c.json({ error: msg }, 409);
+    if (msg === "finalize_in_progress") return c.json({ error: msg }, 409);
+    if (msg === "not_a_participant") return c.json({ error: msg }, 403);
     if (msg === "session_not_found") return c.json({ error: "not_found" }, 404);
     throw e;
   }
