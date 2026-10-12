@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   api,
+  apiErrorCode,
   NEED_INFO,
   type ParticipantState,
   type ScaleOption,
@@ -744,11 +745,21 @@ function ParticipantManager({
   const candidates: User[] = results !== null ? results : members ?? [];
   const candidatesToAdd = candidates.filter((u) => !partIds.has(u.id));
 
+  function rosterErrorMessage(e: unknown): string {
+    if (apiErrorCode(e) === "not_voting") {
+      return "Participants can only be changed while the session is in voting status.";
+    }
+    return String(e);
+  }
+
   async function add(userId: string) {
     setBusy(true);
+    setManagerError(null);
     try {
       await api.addParticipant(sessionId, userId);
       await onChanged();
+    } catch (e) {
+      setManagerError(rosterErrorMessage(e));
     } finally {
       setBusy(false);
     }
@@ -756,9 +767,12 @@ function ParticipantManager({
 
   async function remove(userId: string) {
     setBusy(true);
+    setManagerError(null);
     try {
       await api.removeParticipant(sessionId, userId);
       await onChanged();
+    } catch (e) {
+      setManagerError(rosterErrorMessage(e));
     } finally {
       setBusy(false);
     }

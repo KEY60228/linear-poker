@@ -61,7 +61,9 @@ export function SessionWizard({ viewer }: { viewer: Viewer | null }) {
   );
 
   const [projectIssues, setProjectIssues] = useState<Map<string, ProjectIssueState>>(new Map());
-  const [labelName, setLabelName] = useState<string>("story-point");
+  // The backend's configured label name; null until a /storypoint-issue
+  // response tells us — never guessed client-side.
+  const [labelName, setLabelName] = useState<string | null>(null);
 
   const [createResults, setCreateResults] = useState<CreateResult[] | null>(null);
   const [creating, setCreating] = useState(false);
@@ -119,14 +121,13 @@ export function SessionWizard({ viewer }: { viewer: Viewer | null }) {
       // project that already has a non-finalized session (anyone's) can't
       // host a new one — we flag it in the picker with a link to the
       // existing session rather than hiding it.
-      const [projectsList, allSessions] = await Promise.all([
+      const [projectsList, activeSessions] = await Promise.all([
         api.backlogProjects(t.id),
-        api.listSessions("all", "all").catch(() => []),
+        api.listSessions("all", "active").catch(() => []),
       ]);
       setProjects(projectsList);
       const byProject = new Map<string, string>();
-      for (const s of allSessions) {
-        if (s.status === "finalized") continue;
+      for (const s of activeSessions) {
         if (!byProject.has(s.project.id)) byProject.set(s.project.id, s.id);
       }
       setExistingSessionByProject(byProject);
@@ -570,7 +571,7 @@ function IssueDetectionPanel({
   onProceed,
 }: {
   items: ProjectIssueState[];
-  labelName: string;
+  labelName: string | null;
   onToggleInclude: (projectId: string) => void;
   canProceed: boolean;
   onProceed: () => void;
@@ -578,8 +579,15 @@ function IssueDetectionPanel({
   return (
     <>
       <p className="muted">
-        Detecting the <code>{labelName}</code>-labelled issue in each selected
-        project. Uncheck a row to skip it; "not found" rows can't be included.
+        {labelName !== null ? (
+          <>
+            Detecting the <code>{labelName}</code>-labelled issue in each
+            selected project.
+          </>
+        ) : (
+          <>Detecting the StoryPoint-labelled issue in each selected project.</>
+        )}{" "}
+        Uncheck a row to skip it; "not found" rows can't be included.
       </p>
       <ul className="list">
         {items.map((item) => (
