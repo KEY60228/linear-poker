@@ -20,6 +20,10 @@
       {
         "name": "SESSION_DO",
         "class_name": "SessionDO"
+      },
+      {
+        "name": "TOKEN_REFRESH_DO",
+        "class_name": "TokenRefreshDO"
       }
     ]
   },
@@ -27,6 +31,10 @@
     {
       "tag": "v1",
       "new_sqlite_classes": ["SessionDO"]
+    },
+    {
+      "tag": "v2",
+      "new_sqlite_classes": ["TokenRefreshDO"]
     }
   ],
   "d1_databases": [
