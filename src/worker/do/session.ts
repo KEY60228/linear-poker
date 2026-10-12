@@ -134,6 +134,10 @@ export class SessionDO extends DurableObject<Env> {
     return this.serialized(() => this.deleteSessionImpl(sessionId));
   }
 
+  updateMeta(sessionId: string, meta: SessionMeta): Promise<void> {
+    return this.serialized(() => this.updateMetaImpl(sessionId, meta));
+  }
+
   getState(sessionId: string, viewerUserId: string | null = null): Promise<SessionStateDTO> {
     // Reads take the gate too so a state snapshot can't observe a mutation
     // half-applied across its multiple D1 queries.
@@ -397,6 +401,21 @@ export class SessionDO extends DurableObject<Env> {
       db.prepare("DELETE FROM participants WHERE session_id = ?").bind(sessionId),
       db.prepare("DELETE FROM sessions WHERE id = ?").bind(sessionId),
     ]);
+  }
+
+  /**
+   * Overwrite the stored meta snapshot. Used to re-sync display fields
+   * (project name, issue title, etc.) after they drift in Linear. The
+   * caller fetches fresh values from Linear (the DO has no OAuth token) and
+   * is responsible for preserving fields that must not change mid-session,
+   * such as the estimate scale. Allowed in any status.
+   */
+  private async updateMetaImpl(sessionId: string, meta: SessionMeta): Promise<void> {
+    await this.requireSession(sessionId);
+    await this.env.DB
+      .prepare("UPDATE sessions SET meta_json = ? WHERE id = ?")
+      .bind(JSON.stringify(meta), sessionId)
+      .run();
   }
 
   private async getStateImpl(
