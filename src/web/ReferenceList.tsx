@@ -6,9 +6,15 @@ import { api, type StoryPointReferenceGroup } from "./api";
  * body of the standalone /#/references page and inside the in-session
  * drawer that voters can pop open while picking a number.
  */
-export function ReferenceList({ teamId }: { teamId: string }) {
+export function ReferenceList({
+  teamId,
+  onLabelName,
+}: {
+  teamId: string;
+  onLabelName?: (name: string) => void;
+}) {
   const [groups, setGroups] = useState<StoryPointReferenceGroup[] | null>(null);
-  const [labelName, setLabelName] = useState<string>("story-point");
+  const [labelName, setLabelName] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState<Set<number>>(new Set());
   const [error, setError] = useState<string | null>(null);
@@ -31,6 +37,7 @@ export function ReferenceList({ teamId }: { teamId: string }) {
             })),
         );
         setLabelName(r.labelName);
+        onLabelName?.(r.labelName);
       })
       .catch((e) => !cancelled && setError(String(e)))
       .finally(() => !cancelled && setLoading(false));
@@ -99,7 +106,13 @@ export function ReferenceList({ teamId }: { teamId: string }) {
       {loading && <p>Loading…</p>}
       {!loading && groups !== null && total === 0 && !anyHasMore && (
         <p className="muted">
-          No estimated <code>{labelName}</code> issues in this team yet.
+          {labelName !== null ? (
+            <>
+              No estimated <code>{labelName}</code> issues in this team yet.
+            </>
+          ) : (
+            <>No estimated StoryPoint issues in this team yet.</>
+          )}
         </p>
       )}
       {!loading && groups !== null && groups.length > 0 && (
