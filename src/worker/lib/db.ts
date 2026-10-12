@@ -151,6 +151,26 @@ export interface SessionListItem {
 const LIST_LIMIT = 200;
 const NEED_INFO_VALUE = "need_info";
 
+// D1 rejects statements with more than 100 bound parameters, so IN() queries
+// over id lists run in chunks. Chunked queries lose SQL ordering across
+// chunks; callers that need an order must sort the merged results in JS.
+const IN_CHUNK_SIZE = 50;
+
+async function allInChunks<T>(
+  db: D1Database,
+  buildSql: (placeholders: string) => string,
+  ids: string[],
+): Promise<T[]> {
+  const results: T[] = [];
+  for (let i = 0; i < ids.length; i += IN_CHUNK_SIZE) {
+    const chunk = ids.slice(i, i + IN_CHUNK_SIZE);
+    const ph = chunk.map(() => "?").join(",");
+    const res = await db.prepare(buildSql(ph)).bind(...chunk).all<T>();
+    results.push(...(res.results ?? []));
+  }
+  return results;
+}
+
 export async function listSessionItems(
   db: D1Database,
   filter: SessionListFilter,
@@ -175,36 +195,31 @@ export async function listSessionItems(
   if (sessions.length === 0) return [];
 
   const sessionIds = sessions.map((s) => s.id);
-  const ph = sessionIds.map(() => "?").join(",");
 
-  const partsRes = await db
-    .prepare(`SELECT session_id, user_id FROM participants WHERE session_id IN (${ph})`)
-    .bind(...sessionIds)
-    .all<{ session_id: string; user_id: string }>();
-  const parts = partsRes.results ?? [];
+  const parts = await allInChunks<{ session_id: string; user_id: string }>(
+    db,
+    (ph) => `SELECT session_id, user_id FROM participants WHERE session_id IN (${ph})`,
+    sessionIds,
+  );
 
-  const roundsRes = await db
-    .prepare(
+  const rounds = await allInChunks<{ round_id: string; session_id: string }>(
+    db,
+    (ph) =>
       `SELECT r.id AS round_id, r.session_id FROM rounds r
        JOIN sessions s ON s.id = r.session_id
        WHERE r.session_id IN (${ph}) AND s.current_round_no = r.round_no`,
-    )
-    .bind(...sessionIds)
-    .all<{ round_id: string; session_id: string }>();
+    sessionIds,
+  );
   const currentRoundIdBySession = new Map(
-    (roundsRes.results ?? []).map((r) => [r.session_id, r.round_id]),
+    rounds.map((r) => [r.session_id, r.round_id]),
   );
 
-  let votes: { round_id: string; user_id: string; value: string }[] = [];
   const roundIds = [...currentRoundIdBySession.values()];
-  if (roundIds.length > 0) {
-    const vph = roundIds.map(() => "?").join(",");
-    const votesRes = await db
-      .prepare(`SELECT round_id, user_id, value FROM votes WHERE round_id IN (${vph})`)
-      .bind(...roundIds)
-      .all<{ round_id: string; user_id: string; value: string }>();
-    votes = votesRes.results ?? [];
-  }
+  const votes = await allInChunks<{ round_id: string; user_id: string; value: string }>(
+    db,
+    (ph) => `SELECT round_id, user_id, value FROM votes WHERE round_id IN (${ph})`,
+    roundIds,
+  );
   const votesByRound = new Map<string, { user_id: string; value: string }[]>();
   for (const v of votes) {
     const arr = votesByRound.get(v.round_id) ?? [];
@@ -215,17 +230,16 @@ export async function listSessionItems(
   const finalizedIds = sessions
     .filter((s) => s.status === "finalized")
     .map((s) => s.id);
-  let finals: { session_id: string; value: string; finalized_at: number }[] = [];
-  if (finalizedIds.length > 0) {
-    const fph = finalizedIds.map(() => "?").join(",");
-    const finRes = await db
-      .prepare(
-        `SELECT session_id, value, finalized_at FROM final_estimates WHERE session_id IN (${fph})`,
-      )
-      .bind(...finalizedIds)
-      .all<{ session_id: string; value: string; finalized_at: number }>();
-    finals = finRes.results ?? [];
-  }
+  const finals = await allInChunks<{
+    session_id: string;
+    value: string;
+    finalized_at: number;
+  }>(
+    db,
+    (ph) =>
+      `SELECT session_id, value, finalized_at FROM final_estimates WHERE session_id IN (${ph})`,
+    finalizedIds,
+  );
   const finalBySession = new Map(finals.map((f) => [f.session_id, f]));
 
   return sessions.map((s) => {
@@ -310,15 +324,14 @@ export async function listParticipantGroups(
   if (groups.length === 0) return [];
 
   const ids = groups.map((g) => g.id);
-  const ph = ids.map(() => "?").join(",");
-  const membersRes = await db
-    .prepare(
-      `SELECT * FROM participant_group_members WHERE group_id IN (${ph}) ORDER BY added_at ASC`,
-    )
-    .bind(...ids)
-    .all<ParticipantGroupMemberRow>();
+  const members = await allInChunks<ParticipantGroupMemberRow>(
+    db,
+    (ph) => `SELECT * FROM participant_group_members WHERE group_id IN (${ph})`,
+    ids,
+  );
+  members.sort((a, b) => a.added_at - b.added_at);
   const membersByGroup = new Map<string, ParticipantGroupMemberRow[]>();
-  for (const m of membersRes.results ?? []) {
+  for (const m of members) {
     const arr = membersByGroup.get(m.group_id) ?? [];
     arr.push(m);
     membersByGroup.set(m.group_id, arr);

@@ -119,14 +119,13 @@ export function SessionWizard({ viewer }: { viewer: Viewer | null }) {
       // project that already has a non-finalized session (anyone's) can't
       // host a new one — we flag it in the picker with a link to the
       // existing session rather than hiding it.
-      const [projectsList, allSessions] = await Promise.all([
+      const [projectsList, activeSessions] = await Promise.all([
         api.backlogProjects(t.id),
-        api.listSessions("all", "all").catch(() => []),
+        api.listSessions("all", "active").catch(() => []),
       ]);
       setProjects(projectsList);
       const byProject = new Map<string, string>();
-      for (const s of allSessions) {
-        if (s.status === "finalized") continue;
+      for (const s of activeSessions) {
         if (!byProject.has(s.project.id)) byProject.set(s.project.id, s.id);
       }
       setExistingSessionByProject(byProject);
