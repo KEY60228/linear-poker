@@ -7,6 +7,7 @@ import { runDailyReminder } from "./lib/reminder";
 import { isLinearAuthError } from "./lib/linear";
 
 export { SessionDO } from "./do/session";
+export { TokenRefreshDO } from "./do/token-refresh";
 
 const app = new Hono<HonoEnv>();
 

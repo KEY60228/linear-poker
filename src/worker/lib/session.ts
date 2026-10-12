@@ -2,7 +2,6 @@ import type { Context } from "hono";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import type { HonoEnv } from "../env";
 import { randomId, sign, verify } from "./crypto";
-import { refreshAccessToken } from "./linear";
 
 const COOKIE_NAME = "lpoker_sid";
 const COOKIE_MAX_AGE_SEC = 60 * 60 * 24 * 30; // 30 days
@@ -64,21 +63,18 @@ export async function readAppSession(
     parsed.refreshToken &&
     Date.now() > expiresAt - REFRESH_MARGIN_MS
   ) {
-    // Concurrent requests may race this refresh. That's tolerated: with Linear's
-    // refresh-token rotation, the loser's refresh may fail, but its token is not
-    // yet expired at that point so it falls through to the existing accessToken
-    // and a later request retries against the KV record the winner wrote.
+    // Concurrent requests may race this refresh (parallel SPA calls, or a
+    // stale KV read elsewhere). Linear rotates the refresh token on use, so
+    // refreshing goes through a per-session DO that performs it once and hands
+    // the same result to every caller presenting the same refresh token.
     try {
-      const token = await refreshAccessToken({
-        clientId: c.env.LINEAR_OAUTH_CLIENT_ID,
-        clientSecret: c.env.LINEAR_OAUTH_CLIENT_SECRET,
-        refreshToken: parsed.refreshToken,
-      });
+      const stub = c.env.TOKEN_REFRESH_DO.get(c.env.TOKEN_REFRESH_DO.idFromName(sid));
+      const token = await stub.refresh(parsed.refreshToken);
       parsed = {
         linearUserId: parsed.linearUserId,
-        accessToken: token.access_token,
-        refreshToken: token.refresh_token ?? parsed.refreshToken,
-        expiresAt: typeof token.expires_in === "number" ? Date.now() + token.expires_in * 1000 : null,
+        accessToken: token.accessToken,
+        refreshToken: token.refreshToken,
+        expiresAt: token.expiresAt,
       };
       await c.env.TOKENS.put(kvKey(sid), JSON.stringify(parsed), {
         expirationTtl: COOKIE_MAX_AGE_SEC,

@@ -1,4 +1,5 @@
 import type { SessionDO } from "./do/session";
+import type { TokenRefreshDO } from "./do/token-refresh";
 
 export interface Env {
   DB: D1Database;
@@ -6,6 +7,7 @@ export interface Env {
   LINEAR_CACHE: KVNamespace;
   ASSETS: Fetcher;
   SESSION_DO: DurableObjectNamespace<SessionDO>;
+  TOKEN_REFRESH_DO: DurableObjectNamespace<TokenRefreshDO>;
 
   LINEAR_OAUTH_CLIENT_ID: string;
   LINEAR_OAUTH_CLIENT_SECRET: string;
